@@ -125,8 +125,9 @@ public final class WarpInstaller {
             double xzScale = shifted.borderworld$xzScale();
             double yScale = shifted.borderworld$yScale();
             return new WarpedDensityFunction(function, (pos, x, y, z) -> {
-                // 域偏移查表只能用整数位置（NoisePos 语义），低频偏移场量化到 1 格无视觉影响
-                DensityFunction.NoisePos shiftPos = quantize(x, y, z);
+                // 正常区（坐标未变）时把原始 pos 原样传下去，保持与 Vanilla 完全一致；
+                // 只有真正畸变后才需要为域偏移查表构造"量化位置"（NoisePos 只接受整数）。
+                DensityFunction.NoisePos shiftPos = WarpPositions.forShift(pos, x, y, z);
                 double d = x * xzScale + shifted.borderworld$shiftX().sample(shiftPos);
                 double e = y * yScale + shifted.borderworld$shiftY().sample(shiftPos);
                 double f = z * xzScale + shifted.borderworld$shiftZ().sample(shiftPos);
@@ -139,19 +140,5 @@ public final class WarpInstaller {
         }
 
         return function;
-    }
-
-    private static DensityFunction.NoisePos quantize(double x, double y, double z) {
-        return new DensityFunction.UnblendedNoisePos(roundClamp(x), roundClamp(y), roundClamp(z));
-    }
-
-    private static int roundClamp(double value) {
-        long rounded = Math.round(value);
-        if (rounded > 30_000_000L) {
-            rounded = 30_000_000L;
-        } else if (rounded < -30_000_000L) {
-            rounded = -30_000_000L;
-        }
-        return (int) rounded;
     }
 }

@@ -75,10 +75,16 @@ tools/                            构建、生成、验证脚本（见下）
 ./gradlew runClient      # dev 客户端（可视化检查）
 ```
 
+安装到**正式 Fabric 服务端/客户端**：把 `build/libs/borderworld-<version>.jar` 与
+[Fabric API](https://modrinth.com/mod/fabric-api) 一起放进 `mods/` 即可（jar 已 remap 到
+intermediary，refmap 完整，无需开发环境）。
+
 系统属性开关：
 
 - `-Dborderworld.warpEnabled=false`：完全关闭畸变（A/B 对照用）
+- `-Dborderworld.selfTest=true`：服务端启动时跑一次"密度函数逐位自检"（见 `docs/VERIFICATION.md`）
 - `-Dborderworld.log=false`：关闭锚定日志
+- Gradle 运行任务可用 `-Pbw.warp=false` / `-Pbw.selftest=true` 传入上述开关
 
 ## 验证工具
 
@@ -111,4 +117,41 @@ java -Xmx2G -jar ~/.gradle/caches/fabric-loom/1.21.1/minecraft-server.jar --nogu
 
 ## 当前状态
 
-见 [`docs/VERIFICATION.md`](docs/VERIFICATION.md)：各阶段实测结论与剩余事项。
+**阶段 1~9 均已实测通过**（详见 [`docs/VERIFICATION.md`](docs/VERIFICATION.md)）：
+
+| 阶段 | 结论 |
+| --- | --- |
+| 1 工程 | `./gradlew build` 通过；发布 jar 的 mixin refmap 完整（生产环境可用） |
+| 2 出生区块 | 锚定实际出生区块 `(0,0)`；`setupSpawn` 期间暂停畸变，`/setworldspawn` 即时刷新 |
+| 3 正常区判定 | 纯数学自检 33/33 通过 |
+| 4 正常区逐位原版 | **密度函数逐位自检 6/6 通过**（正常区采样点与"强制恒等"逐位一致）；地形顶面与原版 feature 噪声同级 |
+| 5 注入点 | 噪声叶子 + NoiseConfig 路由替换；Fabric biome API 兼容（就地改字段） |
+| 6 畸变生效 | 远区 69% 列地形改变（最大 19 格，深海）；陆地/山地更明显 |
+| 7 连续过渡 | 差异比例：正常区 0.1~0.2% → 过渡区 21.5%→56.5% → 边境区 65%~81.5%（平均差 1.0→4.65 格，最大 34 格） |
+| 8 无接缝 | 跨区块边界与区块内部的高度差统计与原版同量级（比值 0.52 vs 0.70） |
+| 9 生态仍工作 | 远区 biome 正常、矿石齐全、洞穴比例 3.67%（原版 3.91%）、结构（试炼密室）生成 |
+
+### 已知限制（第一阶段）
+
+1. `SurfaceBuilder` 自带表面噪声（surfaceNoise / badlands / iceberg）与洞穴
+   "意面/面条"噪声（`WeirdScaledSampler`）、`Shift*` 域偏移噪声未参与坐标变换；
+   它们仍正常生成，只是不与畸变空间对齐（影响表面材质细节与洞穴形状细节）。
+2. 跨进程逐方块全等无法作为判据：实测**原版自身跑两遍**也会在矿石/树木等 feature
+   方块上有差异（Minecraft 特征生成跨进程不可复现）。因此正常区验证采用
+   "密度函数逐位自检 + 地形顶面 + biome 数组"三层判据。
+3. 出生点搜索期间畸变暂停，所以出生点选择与原版完全一致；若之后用
+   `/setworldspawn` 改出生点，已生成的区块不会重写（锚点即刻移动，新生成区块跟随）。
+
+### 调参
+
+所有参数在 `config/FarlandsConfig.java`（未来可整体搬成配置文件）。
+默认值偏保守（阶地/带状畸变）；想要更激进的"巨墙/碎块"观感，可提高
+`FARLANDS_PRIMARY_STRENGTH`（>1.2 产生折叠/镜像）或降低 `FARLANDS_PRIMARY_PERIOD`。
+
+`tools/tune_warp.py` 用"原版高度场 + 坐标映射"的数值代理快速比较候选参数
+（无需反复起服）：
+
+```bash
+python3 tools/tune_warp.py --dir run/vanilla --chunks -10 -10 10 10 --center-chunk 0 0
+```
+

@@ -37,6 +37,9 @@ public final class BorderWorld implements ModInitializer {
             if (FarlandsConfig.isLogEnabled() && world.getRegistryKey().getValue().getPath().equals("overworld")) {
                 LOGGER.info("[BorderWorld] world loaded, activeTransform={}", SpawnRegion.transform());
             }
+            if (Boolean.getBoolean("borderworld.selfTest")) {
+                com.borderworld.worldgen.DensityProbe.runOnce(world);
+            }
         });
     }
 }

@@ -52,6 +52,7 @@ public final class SpawnRegion {
     private static volatile Anchor anchor;
     private static volatile FarlandsTransform active = FarlandsTransform.IDENTITY;
     private static volatile boolean spawnSetupInProgress;
+    private static volatile boolean forceIdentity;
 
     // ------------------------------------------------------------------
     // 热路径
@@ -116,15 +117,33 @@ public final class SpawnRegion {
     public static void endSpawnSetup(BlockPos finalSpawnPos) {
         spawnSetupInProgress = false;
         updateSpawnPos(finalSpawnPos);
+        Anchor current = anchor;
+        if (FarlandsConfig.isLogEnabled()) {
+            BorderWorld.LOGGER.info(
+                "[BorderWorld] 出生点搜索结束: 最终出生点=({}, {}, {}), 锚定区块=({}, {}), 畸变已恢复",
+                finalSpawnPos.getX(), finalSpawnPos.getY(), finalSpawnPos.getZ(),
+                current == null ? Integer.MIN_VALUE : current.spawnChunkX(),
+                current == null ? Integer.MIN_VALUE : current.spawnChunkZ()
+            );
+        }
         recomputeActive();
     }
 
     private static void recomputeActive() {
         Anchor current = anchor;
-        if (current == null || spawnSetupInProgress || !FarlandsConfig.WARP_ENABLED) {
+        if (current == null || spawnSetupInProgress || forceIdentity || !FarlandsConfig.WARP_ENABLED) {
             active = FarlandsTransform.IDENTITY;
         } else {
             active = current.transform();
         }
+    }
+
+    /**
+     * 自检用：临时强制恒等变换（验证"正常区逐位原版"时，在同一进程内与畸变版本对比）。
+     * 仅由 {@code DensityProbe} 在 {@code -Dborderworld.selfTest=true} 时调用。
+     */
+    public static void setForceIdentity(boolean value) {
+        forceIdentity = value;
+        recomputeActive();
     }
 }

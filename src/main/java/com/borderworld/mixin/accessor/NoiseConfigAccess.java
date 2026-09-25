@@ -1,6 +1,5 @@
 package com.borderworld.mixin.accessor;
 
-import net.minecraft.world.biome.source.util.MultiNoiseUtil;
 import net.minecraft.world.gen.noise.NoiseConfig;
 import net.minecraft.world.gen.noise.NoiseRouter;
 import org.spongepowered.asm.mixin.Mixin;

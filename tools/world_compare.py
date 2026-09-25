@@ -62,24 +62,50 @@ def to_bytes(tag):
         return struct.pack('>' + 'q' * len(tag), *[int(v) for v in tag])
 
 
-def section_fingerprint(section):
-    """(Y, block palette + data, biome palette + data)"""
+def canonical_section(section):
+    """(Y, 归一化方块摘要, 归一化 biome 摘要)——调色板按内容排序后重新编码，消除顺序差异。"""
+    y = int(section['Y'])
     bs = section.get('block_states')
     bio = section.get('biomes')
-    y = int(section['Y'])
-    if bs is None:
-        return (y, (), ())
-    palette = tuple(
-        (str(entry['Name']), tuple(sorted((str(k), str(v)) for k, v in entry.get('Properties', {}).items())))
-        for entry in bs.get('palette', [])
-    )
-    data = to_bytes(bs.get('data'))
-    if bio is None:
-        bio_palette, bio_data = (), b''
-    else:
-        bio_palette = tuple(str(e) for e in bio.get('palette', []))
-        bio_data = to_bytes(bio.get('data'))
-    return (y, (palette, data), (bio_palette, bio_data))
+    return (y, _canonical_states(bs, min_bits=4), _canonical_states(bio, min_bits=1))
+
+
+def _canonical_states(states, min_bits):
+    """用 (调色板内容, 每个位置 2 字节的规范索引流) 表示一个 bit-packed 状态数组。"""
+    if states is None:
+        return ((), b'')
+    palette = []
+    for entry in states.get('palette', []):
+        if isinstance(entry, dict) and 'Name' in entry:
+            props = tuple(sorted((str(k), str(v)) for k, v in entry.get('Properties', {}).items()))
+            palette.append((str(entry['Name']), props))
+        else:
+            palette.append((str(entry), ()))
+    if len(palette) <= 1:
+        return (tuple(palette), b'')
+    order = sorted(range(len(palette)), key=lambda i: palette[i])
+    mapping = {old: new for new, old in enumerate(order)}
+    sorted_palette = tuple(palette[i] for i in order)
+    bits = max(min_bits, (len(palette) - 1).bit_length())
+    per_long = 64 // bits
+    mask = (1 << bits) - 1
+    data = [int(v) & 0xFFFFFFFFFFFFFFFF for v in states.get('data', [])]
+    out = bytearray(4096 * 2)
+    for i in range(4096):
+        long_index = i // per_long
+        value = 0
+        if long_index < len(data):
+            value = (data[long_index] >> ((i % per_long) * bits)) & mask
+            if value >= len(palette):
+                value = 0
+        canon = mapping.get(value, 0)
+        out[i * 2] = canon & 0xFF
+        out[i * 2 + 1] = (canon >> 8) & 0xFF
+    return (sorted_palette, bytes(out))
+
+
+def section_fingerprint(section):
+    return canonical_section(section)
 
 
 def chunk_fingerprint(chunk):
@@ -139,7 +165,8 @@ def collect_stats(chunks):
                 for e in bio.get('palette', []):
                     biomes.add(str(e))
         for x, y, z, name in palette_blocks(chunk):
-            if name not in AIR:
+            code = terrain_code(name)
+            if code in (CODE_SOLID, CODE_LAVA):
                 key = (cx * 16 + x, cz * 16 + z)
                 if y > heights.get(key, -999):
                     heights[key] = y
@@ -213,8 +240,8 @@ def cmd_compare(args):
     total = 0
     same = 0
     different = []
-    for (cx, cz), chunk_a in iter_chunks(args.a, args.world, rects):
-        chunk_b = read_chunk(args.b, args.world, cx, cz)
+    for (cx, cz), chunk_a in iter_chunks(args.a, args.world_a, rects):
+        chunk_b = read_chunk(args.b, args.world_b, cx, cz)
         total += 1
         if chunk_b is None:
             different.append((cx, cz, 'missing in B'))
@@ -245,15 +272,48 @@ def cmd_stats(args):
 
 
 def surface_heights(server_dir, world, rects):
-    """返回 {(x, z): 最高非空气方块 y}。"""
+    """返回 {(x, z): 地形顶面 y}——忽略水与植被（只取地形实心/岩浆），自顶向下扫描。"""
     columns = {}
     for (cx, cz), chunk in iter_chunks(server_dir, world, rects):
-        for x, y, z, name in palette_blocks(chunk):
-            if name in AIR:
+        remaining = set(range(256))
+        sections = sorted(chunk.get('sections', []), key=lambda s: -int(s['Y']))
+        for section in sections:
+            if not remaining:
+                break
+            y_base = int(section['Y']) * 16
+            bs = section.get('block_states')
+            if bs is None:
                 continue
-            key = (cx * 16 + x, cz * 16 + z)
-            if y > columns.get(key, -999):
-                columns[key] = y
+            palette = []
+            for entry in bs.get('palette', []):
+                palette.append(str(entry['Name']) if isinstance(entry, dict) and 'Name' in entry else str(entry))
+            if len(palette) == 1:
+                name = palette[0]
+                if terrain_code(name) not in (CODE_SOLID, CODE_LAVA):
+                    continue
+                for column in remaining:
+                    columns[(cx * 16 + column % 16, cz * 16 + column // 16)] = y_base + 15
+                remaining.clear()
+                continue
+            bits = max(4, (len(palette) - 1).bit_length())
+            per_long = 64 // bits
+            mask = (1 << bits) - 1
+            data = [int(v) & 0xFFFFFFFFFFFFFFFF for v in bs.get('data', [])]
+            for i in range(4095, -1, -1):
+                if not remaining:
+                    break
+                column = (i & 15) + ((i >> 4) & 15) * 16
+                if column not in remaining:
+                    continue
+                long_index = i // per_long
+                if long_index >= len(data):
+                    continue
+                value = (data[long_index] >> ((i % per_long) * bits)) & mask
+                if value >= len(palette):
+                    value = 0
+                if terrain_code(palette[value]) in (CODE_SOLID, CODE_LAVA):
+                    columns[(cx * 16 + (column & 15), cz * 16 + (column >> 4))] = y_base + (i >> 8)
+                    remaining.discard(column)
     return columns
 
 
@@ -334,17 +394,218 @@ def cmd_rings(args):
               f'{steep:8.4f}  {flat:10.4f}')
 
 
+def cmd_render(args):
+    """把区域高度场渲染成 PNG（高度渐变 + 浮雕阴影），用于直观检查墙体/平台/畸变。"""
+    from PIL import Image, ImageDraw
+    rects = parse_rects(args.chunks)
+    heights = surface_heights(args.dir, args.world, rects)
+    if not heights:
+        raise SystemExit('没有数据')
+    # 用请求范围确定边界（缺失列渲染成深色），保证不同世界渲染图尺寸一致、可对比
+    min_x = min(r[0] for r in rects) * 16
+    max_x = max(r[2] for r in rects) * 16 + 15
+    min_z = min(r[1] for r in rects) * 16
+    max_z = max(r[3] for r in rects) * 16 + 15
+    width = (max_x - min_x + 1) // args.scale
+    height = (max_z - min_z + 1) // args.scale
+    present = [h for h in heights.values()]
+    lo, hi = min(present), max(present)
+    hs = [heights.get((min_x + x * args.scale, min_z + z * args.scale)) for z in range(height) for x in range(width)]
+    span = max(1, hi - lo)
+    img = Image.new('RGB', (width, height))
+    px = img.load()
+    for z in range(height):
+        for x in range(width):
+            h = hs[z * width + x]
+            if h is None:
+                px[x, z] = (20, 20, 30)
+                continue
+            t = (h - lo) / span
+            # 高度渐变：低=深绿/水色，中=绿，高=黄褐，顶=白
+            if t < 0.25:
+                color = (int(40 + t * 400), int(90 + t * 400), int(160 - t * 100))
+            elif t < 0.7:
+                u = (t - 0.25) / 0.45
+                color = (int(140 + u * 60), int(190 - u * 40), int(60 + u * 20))
+            else:
+                u = (t - 0.7) / 0.3
+                color = (int(200 + u * 55), int(150 + u * 90), int(80 + u * 150))
+            # 浮雕：与左/上邻居的高度差
+            hl = hs[z * width + x - 1] if x > 0 else h
+            hu = hs[(z - 1) * width + x] if z > 0 else h
+            if hl is None:
+                hl = h
+            if hu is None:
+                hu = h
+            slope = (h - hl) + (h - hu)
+            shade = max(-0.75, min(0.75, slope / 12.0))
+            factor = 1.0 + shade
+            px[x, z] = tuple(max(0, min(255, int(c * factor))) for c in color)
+
+    draw = ImageDraw.Draw(img)
+    if args.center_chunk:
+        cx = (args.center_chunk[0] * 16 + 8 - min_x) // args.scale
+        cz = (args.center_chunk[1] * 16 + 8 - min_z) // args.scale
+        for radius, color in ((args.normal_radius // args.scale, (255, 255, 255)),
+                              (args.outer_radius // args.scale, (255, 120, 120))):
+            draw.rectangle([cx - radius, cz - radius, cx + radius, cz + radius], outline=color)
+    img = img.resize((width * args.scale, height * args.scale), Image.NEAREST)
+    img.save(args.out)
+    print(f'已写出 {args.out}: {img.width}x{img.height}, 高度范围 {lo}..{hi}, 区域 {rects}')
+
+
+TERRAIN_BLOCKS = {
+    'minecraft:stone', 'minecraft:deepslate', 'minecraft:tuff', 'minecraft:andesite', 'minecraft:diorite',
+    'minecraft:granite', 'minecraft:bedrock', 'minecraft:dirt', 'minecraft:grass_block', 'minecraft:podzol',
+    'minecraft:mycelium', 'minecraft:coarse_dirt', 'minecraft:rooted_dirt', 'minecraft:mud', 'minecraft:sand',
+    'minecraft:red_sand', 'minecraft:sandstone', 'minecraft:red_sandstone', 'minecraft:gravel', 'minecraft:clay',
+    'minecraft:water', 'minecraft:lava', 'minecraft:ice', 'minecraft:packed_ice', 'minecraft:blue_ice',
+    'minecraft:snow_block', 'minecraft:snow', 'minecraft:moss_block', 'minecraft:muddy_mangrove_roots',
+    'minecraft:terracotta', 'minecraft:white_terracotta', 'minecraft:orange_terracotta', 'minecraft:yellow_terracotta',
+    'minecraft:brown_terracotta', 'minecraft:red_terracotta', 'minecraft:light_gray_terracotta',
+    'minecraft:calcite', 'minecraft:basalt', 'minecraft:blackstone', 'minecraft:soul_sand', 'minecraft:soul_soil',
+    'minecraft:magma_block', 'minecraft:netherrack', 'minecraft:end_stone', 'minecraft:obsidian', 'minecraft:bedrock',
+    'minecraft:sculk', 'minecraft:dripstone_block', 'minecraft:pointed_dripstone', 'minecraft:mangrove_roots',
+}
+
+# 每个 y 的编码：0=空气/植被 1=地形实心 2=水 3=岩浆
+CODE_AIR = 0
+CODE_SOLID = 1
+CODE_WATER = 2
+CODE_LAVA = 3
+
+
+def is_terrain_solid(name):
+    """地形实心方块：岩石/土/沙/冰等 + 矿石；植被、结构方块、洞穴装饰一律不算。"""
+    return name in TERRAIN_BLOCKS or name.endswith('_ore') or name in (
+        'minecraft:ancient_debris', 'minecraft:obsidian', 'minecraft:crying_obsidian',
+    )
+
+
+def classify(name):
+    if name in AIR:
+        return CODE_AIR
+    if name == 'minecraft:water':
+        return CODE_WATER
+    if name == 'minecraft:lava':
+        return CODE_LAVA
+    return CODE_SOLID if is_terrain_solid(name) else CODE_AIR
+
+
+def column_mask(chunk):
+    """每个 (x,z) 列的地形骨架：从世界底部到"地形顶部"的逐格分类码。
+
+    只保留密度驱动的地形（岩石/空气/水/岩浆），把植被、结构等"特征方块"排除在外，
+    因此不受 MC 特征生成跨运行不确定性的影响。
+    """
+    sections = sorted(chunk.get('sections', []), key=lambda s: int(s['Y']))
+    min_y = int(sections[0]['Y']) * 16 if sections else -64
+    max_y = (int(sections[-1]['Y']) * 16 + 15) if sections else 319
+    tops = {}
+    codes = {}
+    for section in sections:
+        y_base = int(section['Y']) * 16
+        bs = section.get('block_states')
+        if bs is None:
+            continue
+        palette = []
+        for entry in bs.get('palette', []):
+            palette.append(str(entry['Name']) if isinstance(entry, dict) and 'Name' in entry else str(entry))
+        if len(palette) == 1:
+            name = palette[0]
+            code = classify(name)
+            solid = code == CODE_SOLID
+            for i in range(4096):
+                column = (i & 15) + ((i >> 4) & 15) * 16
+                y = y_base + (i >> 8)
+                if solid:
+                    tops[column] = y if column not in tops else max(tops[column], y)
+                if code != CODE_AIR:
+                    codes[(column, y)] = code
+            continue
+        bits = max(4, (len(palette) - 1).bit_length())
+        per_long = 64 // bits
+        mask = (1 << bits) - 1
+        data = [int(v) & 0xFFFFFFFFFFFFFFFF for v in bs.get('data', [])]
+        for i in range(4096):
+            long_index = i // per_long
+            value = 0
+            if long_index < len(data):
+                value = (data[long_index] >> ((i % per_long) * bits)) & mask
+                if value >= len(palette):
+                    value = 0
+            name = palette[value]
+            code = classify(name)
+            column = (i & 15) + ((i >> 4) & 15) * 16
+            y = y_base + (i >> 8)
+            if code == CODE_SOLID:
+                tops[column] = y if column not in tops else max(tops[column], y)
+            if code != CODE_AIR:
+                codes[(column, y)] = code
+
+    out = {}
+    for column, top in tops.items():
+        mask_bytes = bytearray(max_y - min_y + 1)
+        for y in range(min_y, top + 1):
+            mask_bytes[y - min_y] = codes.get((column, y), CODE_AIR)
+        out[column] = (top, bytes(mask_bytes))
+    return out
+
+
+def terrain_code(name):
+    """地形分类：0=空气 1=实心 2=水 3=岩浆；非地形方块（植被/结构/洞穴装饰）返回 None（跳过）。"""
+    if name in AIR:
+        return CODE_AIR
+    if name == 'minecraft:water':
+        return CODE_WATER
+    if name == 'minecraft:lava':
+        return CODE_LAVA
+    if is_terrain_solid(name):
+        return CODE_SOLID
+    return None
+
+
+def chunk_terrain_codes(chunk):
+    """{(x, y, z): code}——只包含可比位置（地形方块/空气/水/岩浆）。"""
+    out = {}
+    for x, y, z, name in palette_blocks(chunk):
+        code = terrain_code(name)
+        if code is not None:
+            out[(x, y, z)] = code
+    return out
+
+
+def cmd_terrain(args):
+    """阶段 4 主判据：比较密度驱动的地形（特征方块跳过，不受 feature 跨运行不确定性影响）。"""
+    rects = parse_rects(args.chunks)
+    total = 0
+    clean = 0
+    reports = []
+    for (cx, cz), chunk_a in iter_chunks(args.a, args.world_a, rects):
+        chunk_b = read_chunk(args.b, args.world_b, cx, cz)
+        total += 1
+        if chunk_b is None:
+            reports.append((cx, cz, 'B 缺失', 0))
+            continue
+        ca = chunk_terrain_codes(chunk_a)
+        cb = chunk_terrain_codes(chunk_b)
+        keys = set(ca) | set(cb)
+        mismatches = [k for k in keys if ca.get(k) != cb.get(k)]
+        if not mismatches:
+            clean += 1
+        else:
+            reports.append((cx, cz, f'{len(mismatches)} 处不同', len(mismatches)))
+    print(f'地形（密度驱动）比较: 区块 {total}, 完全一致 {clean}, 有差异 {len(reports)}')
+    for cx, cz, why, n in reports[:15]:
+        print(f'  ({cx}, {cz}): {why}')
+    if reports:
+        print(f'  差异位置合计: {sum(r[3] for r in reports)}（应远小于每区块 98304 个位置）')
+
+
 def cmd_heightmap(args):
     """把区域地表高度画成 ASCII 图（每 cell 取该列最高非空气方块），用于目视检查墙体/平台。"""
     rects = parse_rects(args.chunks)
-    columns = {}
-    for (cx, cz), chunk in iter_chunks(args.dir, args.world, rects):
-        for x, y, z, name in palette_blocks(chunk):
-            if name in AIR:
-                continue
-            key = (cx * 16 + x, cz * 16 + z)
-            if y > columns.get(key, -999):
-                columns[key] = y
+    columns = surface_heights(args.dir, args.world, rects)
     if not columns:
         raise SystemExit('没有数据')
     xs = sorted({k[0] for k in columns})
@@ -378,7 +639,8 @@ def main():
     p = sub.add_parser('compare')
     p.add_argument('--a', required=True)
     p.add_argument('--b', required=True)
-    p.add_argument('--world', default='world')
+    p.add_argument('--world-a', default='world')
+    p.add_argument('--world-b', default=None, help='默认与 --world-a 相同')
     p.add_argument('--chunks', nargs='+', type=int, required=True)
     p.set_defaults(func=cmd_compare)
 
@@ -414,7 +676,29 @@ def main():
     p.add_argument('--step', type=int, default=16)
     p.set_defaults(func=cmd_rings)
 
+    p = sub.add_parser('terrain')
+    p.add_argument('--a', required=True)
+    p.add_argument('--b', required=True)
+    p.add_argument('--world-a', default='world')
+    p.add_argument('--world-b', default=None)
+    p.add_argument('--chunks', nargs='+', type=int, required=True)
+    p.set_defaults(func=cmd_terrain)
+
+    p = sub.add_parser('render')
+    p.add_argument('--dir', required=True)
+    p.add_argument('--world', default='world')
+    p.add_argument('--label', default='world')
+    p.add_argument('--chunks', nargs='+', type=int, required=True)
+    p.add_argument('--out', required=True)
+    p.add_argument('--scale', type=int, default=1)
+    p.add_argument('--center-chunk', nargs=2, type=int, default=None)
+    p.add_argument('--normal-radius', type=int, default=80)
+    p.add_argument('--outer-radius', type=int, default=112)
+    p.set_defaults(func=cmd_render)
+
     args = parser.parse_args()
+    if getattr(args, 'world_b', None) is None:
+        args.world_b = getattr(args, 'world_a', getattr(args, 'world', 'world'))
     args.func(args)
 
 
