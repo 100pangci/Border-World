@@ -1,0 +1,18 @@
+{
+  "required": true,
+  "package": "com.borderworld.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "accessor.DensityFunctionTypesNoiseAccess",
+    "accessor.DensityFunctionTypesShiftedNoiseAccess",
+    "accessor.InterpolatedNoiseSamplerAccess",
+    "accessor.MultiNoiseSamplerAccess",
+    "accessor.NoiseConfigAccess",
+    "MinecraftServerMixin",
+    "ServerChunkLoadingManagerMixin",
+    "ServerWorldMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

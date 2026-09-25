@@ -1,0 +1,20 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# Loom / Minecraft dev runtime
+run/
+remappedSrc/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+*~
+.DS_Store
