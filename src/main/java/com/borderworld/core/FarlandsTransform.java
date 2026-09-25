@@ -34,10 +34,16 @@ public final class FarlandsTransform {
         double secondaryPhaseZ,
         double radialRamp,
         double verticalStrength,
-        double verticalPeriod
+        double verticalPeriod,
+        double sawStrength,
+        double sawPeriod
     ) {
         public boolean hasVerticalWarp() {
             return this.verticalStrength != 0.0 && this.verticalPeriod != 0.0;
+        }
+
+        public boolean hasSawtooth() {
+            return this.sawStrength != 0.0 && this.sawPeriod != 0.0;
         }
     }
 
@@ -64,7 +70,7 @@ public final class FarlandsTransform {
     }
 
     private static Params defaultParams() {
-        return new Params(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+        return new Params(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0);
     }
 
     public boolean isIdentity() {
@@ -167,6 +173,7 @@ public final class FarlandsTransform {
         v += WorldgenMath.harmonicWarp(u, this.params.primaryStrength(), this.params.primaryPeriod(), primaryPhase);
         v += WorldgenMath.harmonicWarp(u, this.params.secondaryStrength(), this.params.secondaryPeriod(), secondaryPhase);
         v += this.params.radialRamp() * u;
+        v += WorldgenMath.sawtoothWarp(u, this.params.sawStrength(), this.params.sawPeriod());
         return v;
     }
 
@@ -188,6 +195,7 @@ public final class FarlandsTransform {
             + ", primary=" + this.params.primaryStrength() + "@" + this.params.primaryPeriod()
             + ", secondary=" + this.params.secondaryStrength() + "@" + this.params.secondaryPeriod()
             + ", ramp=" + this.params.radialRamp()
-            + ", vertical=" + this.params.verticalStrength() + "@" + this.params.verticalPeriod() + "]";
+            + ", vertical=" + this.params.verticalStrength() + "@" + this.params.verticalPeriod()
+            + ", sawtooth=" + this.params.sawStrength() + "@" + this.params.sawPeriod() + "]";
     }
 }

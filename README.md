@@ -12,18 +12,29 @@ Fabric 1.21.1 / Java 21 Mod：**世界以实际出生点为中心保留一小块
 | 过渡区 | 80 → 112 格（2 chunks 宽） | 畸变系数 smoothstep 连续 0 → 1 |
 | 边境之地 | ≥ 112 格 | 完整畸变，无限延伸 |
 
-畸变方式不是预制墙体或结构拼接，而是把**进入噪声的世界坐标**做一次有界相位调制：
+畸变方式不是预制墙体或结构拼接，而是把**进入噪声的世界坐标**做一次有界调制 + 一次可控断层：
 
 ```text
 v(u) = u + Σ strengthᵢ · (periodᵢ / 2π) · sin(2π·u/periodᵢ + phaseᵢ) + ramp·u
-v'(u) = 1 + Σ strengthᵢ · cos(...) + ramp
+         + sawStrength · (frac(u / sawPeriod) − 0.5)
+v'(u) = 1 + Σ strengthᵢ · cos(...) + ramp        （锯齿段内为 + sawStrength/sawPeriod）
 ```
 
-- 导数为 0 的位置即"停滞带"：地形沿该轴被挤出成平台/巨墙/长隧道；
-- 两个水平轴各自独立调制，叠加形成方格状地形（与经典 Far Lands 形态一致）；
-- 多谐波叠加模拟经典机制里"多个八度在不同距离逐级溢出"的不规则性；
-- 数学全部有界：不会像旧版那样外推到 1e11 量级，因此原版 spline / rangeChoice /
-  squeeze / 含水层 / 洞穴管线全部照常工作，biome、洞穴、矿物、结构继续沿原版体系生成。
+- 导数为 0 的位置即"停滞带"：地形沿该轴被挤出成平台/长隧道；
+- `strength > 1` 时导数转负 → **折叠/镜像重复地形**；
+- **锯齿项**每 `sawPeriod` 格产生一次 `sawStrength` 格的坐标跳变 → 一条竖直断层（"巨墙"），
+  这是让远区一眼就像经典 Far Lands 的关键；跳变线是坐标的纯函数，与区块边界无关；
+- 两个水平轴各自独立调制，叠加形成方格状地形；
+- 数学全部有界（除刻意设置的断层线），因此原版 spline / rangeChoice / squeeze /
+  含水层 / 洞穴管线全部照常工作，biome、洞穴、矿物、结构继续沿原版体系生成。
+
+当前默认参数（`config/FarlandsConfig.java`）：
+
+```text
+正常区 10×10 chunks（160×160 格） / 过渡区 32 格
+主谐波 1.25 @ 64 格（折叠）  +  次谐波 0.85 @ 320 格（打乱 biome/地形格局）
+锯齿 320 格 @ 160 格（断层巨墙）  +  垂直畸变 0.5 @ 64 格（水平板块）
+```
 
 历史成因分析（12,550,824 那个数字怎么来的）与设计取舍见 [`docs/DESIGN.md`](docs/DESIGN.md)。
 
@@ -144,9 +155,16 @@ java -Xmx2G -jar ~/.gradle/caches/fabric-loom/1.21.1/minecraft-server.jar --nogu
 
 ### 调参
 
-所有参数在 `config/FarlandsConfig.java`（未来可整体搬成配置文件）。
-默认值偏保守（阶地/带状畸变）；想要更激进的"巨墙/碎块"观感，可提高
-`FARLANDS_PRIMARY_STRENGTH`（>1.2 产生折叠/镜像）或降低 `FARLANDS_PRIMARY_PERIOD`。
+所有参数在 `config/FarlandsConfig.java`（未来可整体搬成配置文件）：
+
+| 参数 | 默认 | 作用 |
+| --- | --- | --- |
+| `FARLANDS_PRIMARY_STRENGTH/PERIOD` | 1.25 / 64 | 主谐波：>1 产生折叠/镜像重复 |
+| `FARLANDS_SECONDARY_STRENGTH/PERIOD` | 0.85 / 320 | 长周期大振幅：打乱 biome/地形格局 |
+| `FARLANDS_SAWTOOTH_STRENGTH/PERIOD` | 320 / 160 | 锯齿断层：每 160 格一条"巨墙"（0=关闭） |
+| `VERTICAL_WARP_STRENGTH/PERIOD` | 0.5 / 64 | 垂直畸变：水平板块/竖向断层 |
+| `TRANSITION_WIDTH_BLOCKS` | 32 | 过渡区宽度（1~2 区块） |
+| `NORMAL_REGION_CHUNKS` | 10 | 正常区边长（10×10 chunks） |
 
 `tools/tune_warp.py` 用"原版高度场 + 坐标映射"的数值代理快速比较候选参数
 （无需反复起服）：

@@ -83,6 +83,26 @@ public final class WorldgenMath {
         return strength * Math.cos(omega * u + phase);
     }
 
+    /**
+     * 锯齿相位调制：在 {@code u = k · period} 处产生幅度为 {@code strength} 的坐标跳变。
+     *
+     * <pre>
+     *   saw(u) = strength · (frac(u / period) − 0.5)
+     * </pre>
+     *
+     * <p>这是"墙"的来源：坐标在一个点上突然平移，噪声采样位置随之突变，
+     * 地形出现一条竖直断层（经典 Far Lands 的巨墙正是坐标跳变/外推突变造成的）。
+     * 注意它是<b>刻意的不连续</b>，跳变线是坐标的纯函数，与区块边界无关，不会产生接缝。
+     */
+    public static double sawtoothWarp(double u, double strength, double period) {
+        if (strength == 0.0 || period == 0.0) {
+            return 0.0;
+        }
+        double phase = u / period;
+        double fraction = phase - Math.floor(phase);
+        return strength * (fraction - 0.5);
+    }
+
     public static final double TWO_PI = Math.PI * 2.0;
 
     // ------------------------------------------------------------------

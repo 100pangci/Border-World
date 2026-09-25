@@ -93,7 +93,13 @@ public final class SelfCheck {
     }
 
     private static void checkContinuity() {
-        FarlandsTransform t = new FarlandsTransform(0.0, 0.0, FarlandsConfig.normalRegion(0.0, 0.0), FarlandsConfig.params());
+        // 平滑部分（关闭锯齿）必须连续；锯齿是刻意的不连续，单独验证
+        FarlandsTransform.Params base = FarlandsConfig.params();
+        FarlandsTransform.Params noSaw = new FarlandsTransform.Params(
+            base.primaryStrength(), base.primaryPeriod(), base.primaryPhaseX(), base.primaryPhaseZ(),
+            base.secondaryStrength(), base.secondaryPeriod(), base.secondaryPhaseX(), base.secondaryPhaseZ(),
+            base.radialRamp(), base.verticalStrength(), base.verticalPeriod(), 0.0, base.sawPeriod());
+        FarlandsTransform t = new FarlandsTransform(0.0, 0.0, FarlandsConfig.normalRegion(0.0, 0.0), noSaw);
         double step = 0.25;
         double maxAnomaly = 0.0;
         for (double u = 70.0; u <= 130.0; u += step) {
@@ -101,9 +107,21 @@ public final class SelfCheck {
             double curr = t.transformX(u, 64.0, 0.0);
             maxAnomaly = Math.max(maxAnomaly, Math.abs((curr - prev) - step));
         }
-        // 导数上界 ≈ 1 + primary + secondary + |ramp| = 2.4；步长 0.25 → 允许偏差 0.35
-        expect("过渡区边界连续（无跳变），最大偏差=" + String.format("%.4f", maxAnomaly),
-            maxAnomaly < 0.35);
+        // 平滑部分导数上界 = 1 + primary + secondary = 1 + 1.25 + 0.85 = 3.1
+        double bound = (1.0 + FarlandsConfig.FARLANDS_PRIMARY_STRENGTH + FarlandsConfig.FARLANDS_SECONDARY_STRENGTH - 1.0) * step;
+        expect("平滑部分连续（无跳变），最大偏差=" + String.format("%.4f", maxAnomaly)
+            + " ≤ " + String.format("%.3f", bound + 0.05), maxAnomaly <= bound + 0.05);
+
+        // 锯齿：周期边界处跳变幅度必须等于 strength
+        double strength = FarlandsConfig.FARLANDS_SAWTOOTH_STRENGTH;
+        double period = FarlandsConfig.FARLANDS_SAWTOOTH_PERIOD;
+        double before = WorldgenMath.sawtoothWarp(period - 1e-9, strength, period);
+        double after = WorldgenMath.sawtoothWarp(period + 1e-9, strength, period);
+        expect("锯齿项在周期边界产生 strength 幅度的断层（" + strength + " 格）",
+            Math.abs(before - after - strength) < 1e-6);
+        double slope = WorldgenMath.sawtoothWarp(10.0, strength, period) - WorldgenMath.sawtoothWarp(9.0, strength, period);
+        expect("锯齿项在区间内线性（每格位移 = strength/period）",
+            Math.abs(slope - strength / period) < 1e-9);
 
         double crossChunk = 0.0;
         for (double u = 88.0; u <= 120.0; u += 1.0) {

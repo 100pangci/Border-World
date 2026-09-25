@@ -44,21 +44,27 @@ public final class FarlandsConfig {
      *   <li>A &gt; 1：局部折叠（出现镜像重复地形，更接近经典"重复结构"）</li>
      * </ul>
      */
-    public static final double FARLANDS_PRIMARY_STRENGTH = 1.05;
+    public static final double FARLANDS_PRIMARY_STRENGTH = 1.25;
 
     /** 主谐波周期（方块）。决定墙/平台的间距尺度。 */
-    public static final double FARLANDS_PRIMARY_PERIOD = 96.0;
+    public static final double FARLANDS_PRIMARY_PERIOD = 64.0;
 
     /** 主谐波在 X / Z 轴的相位（弧度）。相同相位 → 轴对称的方格状地形。 */
     public static final double FARLANDS_PRIMARY_PHASE_X = 0.0;
     public static final double FARLANDS_PRIMARY_PHASE_Z = 0.0;
 
     /**
-     * 次谐波强度/周期：模拟经典 Far Lands 中"多个八度在不同距离逐级溢出"的效果，
-     * 用来打破单一正弦的规则性，使地形更不规则。
+     * 次谐波强度/周期。
+     *
+     * <p>这里同时承担两个作用：
+     * <ol>
+     *   <li>长周期（默认 320 格）大振幅：位移幅度可达几十格，足以打乱 climate/biome 与
+     *       地形格局，让"走几步就换一种地形"；</li>
+     *   <li>与主谐波叠加后把导数推向负值，产生折叠/镜像重复结构。</li>
+     * </ol>
      */
-    public static final double FARLANDS_SECONDARY_STRENGTH = 0.35;
-    public static final double FARLANDS_SECONDARY_PERIOD = 37.0;
+    public static final double FARLANDS_SECONDARY_STRENGTH = 0.85;
+    public static final double FARLANDS_SECONDARY_PERIOD = 320.0;
     public static final double FARLANDS_SECONDARY_PHASE_X = 0.0;
     public static final double FARLANDS_SECONDARY_PHASE_Z = 1.7;
 
@@ -69,13 +75,25 @@ public final class FarlandsConfig {
     public static final double FARLANDS_RADIAL_RAMP = 0.0;
 
     /**
-     * 垂直（Y 轴）畸变强度与周期。默认 0 = 不畸变。
+     * 垂直（Y 轴）畸变强度与周期。默认 0.5 = 中等强度。
      *
-     * <p>竖直方向的畸变会带来"千层饼"一样的水平平台，但也可能让含水层/基岩层
-     * 位置偏移，属于实验性参数；启用前建议单独测试。
+     * <p>竖直方向的畸变会带来"千层饼"一样的水平平台、悬空板块与竖向断层，
+     * 是让远区一眼就"不对劲"的关键手段；过强（&gt;1）会让垂直剖面局部反转，
+     * 可能出现大量悬空/倒置地形，可按需调节。
      */
-    public static final double VERTICAL_WARP_STRENGTH = 0.0;
+    public static final double VERTICAL_WARP_STRENGTH = 0.5;
     public static final double VERTICAL_WARP_PERIOD = 64.0;
+
+    /**
+     * 锯齿项（"墙"）：每 {@code period} 格产生一次幅度 {@code strength} 的坐标跳变，
+     * 在地形上形成一条竖直断层——这是让远区一眼就像经典 Far Lands 的关键项。
+     *
+     * <p>强度要足够大（与 biome/地形格局的尺度相当，几百格），断层两侧才会落在
+     * 完全不同的地形上，从而出现几十格高的"墙"；太小只会平移一小片同质地貌。
+     * 0 = 关闭（只做平滑畸变，不会出现断层）。
+     */
+    public static final double FARLANDS_SAWTOOTH_STRENGTH = 320.0;
+    public static final double FARLANDS_SAWTOOTH_PERIOD = 160.0;
 
     // ------------------------------------------------------------------
     // 运行开关
@@ -130,7 +148,9 @@ public final class FarlandsConfig {
             FARLANDS_SECONDARY_PHASE_Z,
             FARLANDS_RADIAL_RAMP,
             VERTICAL_WARP_STRENGTH,
-            VERTICAL_WARP_PERIOD
+            VERTICAL_WARP_PERIOD,
+            FARLANDS_SAWTOOTH_STRENGTH,
+            FARLANDS_SAWTOOTH_PERIOD
         );
     }
 
@@ -141,6 +161,7 @@ public final class FarlandsConfig {
             + ", primary=" + FARLANDS_PRIMARY_STRENGTH + "@" + (int) FARLANDS_PRIMARY_PERIOD + "格"
             + ", secondary=" + FARLANDS_SECONDARY_STRENGTH + "@" + (int) FARLANDS_SECONDARY_PERIOD + "格"
             + ", ramp=" + FARLANDS_RADIAL_RAMP
-            + ", vertical=" + VERTICAL_WARP_STRENGTH + "@" + (int) VERTICAL_WARP_PERIOD + "格";
+            + ", vertical=" + VERTICAL_WARP_STRENGTH + "@" + (int) VERTICAL_WARP_PERIOD + "格"
+            + ", sawtooth=" + FARLANDS_SAWTOOTH_STRENGTH + "@" + (int) FARLANDS_SAWTOOTH_PERIOD + "格";
     }
 }
