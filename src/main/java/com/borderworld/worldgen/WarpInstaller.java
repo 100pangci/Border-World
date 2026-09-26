@@ -69,7 +69,8 @@ public final class WarpInstaller {
         NoiseRouter router = config.getNoiseRouter();
         NoiseRouter warpedRouter = new NoiseRouter(
             router.barrierNoise().apply(visitor),
-            router.fluidLevelFloodednessNoise().apply(visitor),
+            // 远区强制灌水：旧版边境之地海平面以下全部被水淹没
+            new FarZoneOverrideFunction(router.fluidLevelFloodednessNoise().apply(visitor), 1.0),
             router.fluidLevelSpreadNoise().apply(visitor),
             router.lavaNoise().apply(visitor),
             router.temperature().apply(visitor),
@@ -89,13 +90,17 @@ public final class WarpInstaller {
         // biome / 结构放置 / 出生点搜索走的是独立的 MultiNoiseSampler，这里同步替换，
         // 否则"查询到的 biome"与"生成出来的 biome"会对不上。
         // 注意：只改六个气候字段，不重建对象（Fabric API 会给采样器注入 seed 字段，重建会丢）。
+        // 注意：这里刻意<b>不</b>对 MultiNoiseSampler 做坐标钉死。
+        // 旧版里"地形噪声"和"生物群系/地表噪声"是不同发生器、溢出距离也各不相同，
+        // 所以远区的地表材质/植被仍会沿轴变化（草地/沙/雪交替）；
+        // 若把生物群系也一起钉死，整个远区会变成同一种地表（实测：一片沙漠）。
         MultiNoiseUtil.MultiNoiseSampler sampler = config.getMultiNoiseSampler();
-        DensityFunction temperature = sampler.temperature().apply(visitor);
-        DensityFunction humidity = sampler.humidity().apply(visitor);
-        DensityFunction continentalness = sampler.continentalness().apply(visitor);
-        DensityFunction erosion = sampler.erosion().apply(visitor);
-        DensityFunction depth = sampler.depth().apply(visitor);
-        DensityFunction weirdness = sampler.weirdness().apply(visitor);
+        DensityFunction temperature = sampler.temperature();
+        DensityFunction humidity = sampler.humidity();
+        DensityFunction continentalness = sampler.continentalness();
+        DensityFunction erosion = sampler.erosion();
+        DensityFunction depth = sampler.depth();
+        DensityFunction weirdness = sampler.weirdness();
         MultiNoiseSamplerAccess samplerAccess = (MultiNoiseSamplerAccess) (Object) sampler;
         samplerAccess.borderworld$setTemperature(temperature);
         samplerAccess.borderworld$setHumidity(humidity);
