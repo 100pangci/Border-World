@@ -71,37 +71,53 @@ public final class FarlandsConfig {
     public static final double FARLANDS_RADIAL_RAMP = 0.0;
 
     /**
-     * 垂直（Y 轴）平滑畸变强度与周期。默认 0 = 关闭（竖墙由 {@link #FARLANDS_WALL_HEIGHT_BLOCKS} 的阶跃负责）。
+     * 竖直分层锯齿：远区每 {@code PERIOD} 格把高度采样折回一次、折回量 {@code STRENGTH} 格。
+     *
+     * <p>这是老版本边境之地那种<b>夹层 / 镂空 / 悬空石板</b>石壁的来源：
+     * 折回会让密度剖面在同一列出现多个零点 → 石壁被打出空洞与平台。
+     * 0 = 关闭（墙面会是一块干净的整体峭壁）。
      */
-    public static final double VERTICAL_WARP_STRENGTH = 0.0;
-    public static final double VERTICAL_WARP_PERIOD = 64.0;
+    public static final double VERTICAL_WARP_STRENGTH = 104.0;
+    public static final double VERTICAL_WARP_PERIOD = 72.0;
 
     /**
      * 锯齿断层：每 {@code period} 格产生一次幅度 {@code strength} 的<b>水平</b>坐标跳变。
      *
      * <p>默认 0 = 关闭。它搬的是"采样到的地形"，墙有多高取决于两地地形差多少：
      * 在平坦地带几乎看不到，在起伏地带又会把不同 biome 的地形硬拼在一起（显得碎片化）。
-     * "突然抬上去"改由 {@link #FARLANDS_WALL_HEIGHT_BLOCKS} 的垂直阶跃负责，
+     * "突然抬上去"改由切片抬升（见 {@link #FARLANDS_SLAB_STEP_X}）负责，
      * 高度恒定、与当地起伏无关。
      */
     public static final double FARLANDS_SAWTOOTH_STRENGTH = 0.0;
     public static final double FARLANDS_SAWTOOTH_PERIOD = 128.0;
 
+    // ------------------------------------------------------------------
+    // 切片抬升（"边境之墙"的形态来源）
+    // ------------------------------------------------------------------
+
     /**
-     * 边境之墙高度（格）：远区按轴向阶跃把地形<b>整列抬高</b>该格数。
+     * 沿 X 的粗台阶：每 {@code FARLANDS_SLAB_LATTICE_X} 格一片，片与片之间错开
+     * {@code FARLANDS_SLAB_STEP_X} 格高度。
      *
-     * <p>这是"突然抬上去"的唯一来源。实现方式是把整条竖直剖面（所有噪声叶子
-     * <b>以及</b>原版 {@code y_clamped_gradient} 深度梯度/滑移项）按
-     * {@code y - N} 采样，等价于该列地形整体平移 N 格：
-     * <ul>
-     *   <li>墙线两侧高度差恒为 N 格（与当地起伏无关，平坦地带也成立）；</li>
-     *   <li>越过墙线时是 1 格宽的<b>垂直断面</b>，没有斜坡、没有分档；</li>
-     *   <li>墙那边就是一块整体抬高 N 格的正常地形（洞穴/含水层一起跟过去）。</li>
-     * </ul>
-     *
-     * <p>建议 20~40；0 = 关闭（只剩水平方向的轻度畸变）。
+     * <p>两级叠加（X 粗 + Z 细）复现老版本边境之地的层层石壁：
+     * 原地形被切片整体错开，片内材质不变，片间是竖直断面。
      */
-    public static final double FARLANDS_WALL_HEIGHT_BLOCKS = 30.0;
+    public static final double FARLANDS_SLAB_STEP_X = 56.0;
+    public static final double FARLANDS_SLAB_LATTICE_X = 160.0;
+
+    /** 沿 Z 的细切片：更密的竖壁（老版本那种一眼看不到头的密集石壁）。 */
+    public static final double FARLANDS_SLAB_STEP_Z = 40.0;
+    public static final double FARLANDS_SLAB_LATTICE_Z = 56.0;
+
+    /** 每轴切片档数：抬升量 = 档位(0..n-1) × STEP。4 档 ⇒ 最高约 3×56+3×40 = 288 格（地表正好顶到建造上限）。 */
+    public static final int FARLANDS_SLAB_LEVELS = 4;
+
+    /**
+     * 随高度倾斜的剪切：不同高度把地形水平错开该幅度（格）。
+     * 让石壁出现悬挑、空隙、倾斜的层理（老版本那种"整块地皮被推歪"的观感）。0 = 关闭。
+     */
+    public static final double FARLANDS_SHEAR_STRENGTH = 48.0;
+    public static final double FARLANDS_SHEAR_PERIOD = 96.0;
 
     // ------------------------------------------------------------------
     // 运行开关
@@ -159,7 +175,13 @@ public final class FarlandsConfig {
             VERTICAL_WARP_PERIOD,
             FARLANDS_SAWTOOTH_STRENGTH,
             FARLANDS_SAWTOOTH_PERIOD,
-            FARLANDS_WALL_HEIGHT_BLOCKS
+            FARLANDS_SLAB_STEP_X,
+            FARLANDS_SLAB_LATTICE_X,
+            FARLANDS_SLAB_STEP_Z,
+            FARLANDS_SLAB_LATTICE_Z,
+            FARLANDS_SLAB_LEVELS,
+            FARLANDS_SHEAR_STRENGTH,
+            FARLANDS_SHEAR_PERIOD
         );
     }
 
@@ -172,6 +194,9 @@ public final class FarlandsConfig {
             + ", ramp=" + FARLANDS_RADIAL_RAMP
             + ", vertical=" + VERTICAL_WARP_STRENGTH + "@" + (int) VERTICAL_WARP_PERIOD + "格"
             + ", sawtooth=" + FARLANDS_SAWTOOTH_STRENGTH + "@" + (int) FARLANDS_SAWTOOTH_PERIOD + "格"
-            + ", wallHeight=" + FARLANDS_WALL_HEIGHT_BLOCKS + "格";
+            + ", slabX=" + FARLANDS_SLAB_STEP_X + "@" + (int) FARLANDS_SLAB_LATTICE_X + "格"
+            + ", slabZ=" + FARLANDS_SLAB_STEP_Z + "@" + (int) FARLANDS_SLAB_LATTICE_Z + "格"
+            + " x" + FARLANDS_SLAB_LEVELS + "档"
+            + ", shear=" + FARLANDS_SHEAR_STRENGTH + "@" + (int) FARLANDS_SHEAR_PERIOD + "格";
     }
 }

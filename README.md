@@ -12,33 +12,31 @@ Fabric 1.21.1 / Java 21 Mod：**世界以实际出生点为中心保留一小块
 | 过渡区 | 80 → 96 格（1 chunk 宽） | 畸变系数 smoothstep 连续 0 → 1 |
 | 边境之地 | ≥ 96 格 | 完整畸变，无限延伸 |
 
-畸变方式不是预制墙体或结构拼接，而是把**进入噪声的世界坐标**做一次有界水平调制，
-再把**整条竖直剖面**按轴向阶跃平移：
+畸变方式不是预制墙体或结构拼接，而是把**原地形整体"切片"再逐片抬升**，
+外加一层竖直分层锯齿：
 
 ```text
-水平： v(u) = u + Σ strengthᵢ · (periodᵢ / 2π) · sin(2π·u/periodᵢ + phaseᵢ) + ramp·u
-
-垂直： lift(x,z) = α(x,z) · wallHeight · wallLevel(x,z)     ∈ {0, wallHeight}
-       wallLevel(x,z) = (nX(x) > 0) XOR (nZ(z) > 0)       // 两个轴向 1D 值噪声（lattice 112）
-       y' = y − lift(x,z)                                 // 在更低处取样 = 该列地形整体抬高
+切片抬升： lift(x,z,y) = levelX(x+leanX(y))·STEP_X + levelZ(z+leanZ(y))·STEP_Z
+           level ∈ {0,1,2,3}（每轴一维值噪声量化成 4 档）
+           y' = y − lift                    // 采样点下移 = 该片地形整体抬高
+分层锯齿： y' += SAW · (frac((y+phase(x,z))/SAW_PERIOD) − 0.5)   // 强度 > 周期 ⇒ 折回
 ```
 
-- `α(x,z)` 是过渡区的 smoothstep 畸变系数：正常区 0 → 边境之地 1；
-- **垂直阶跃就是"边境之墙"**：`wallLevel` 只取 0/1，越过墙线的瞬间抬升量从 0 跳到
-  `wallHeight`（默认 30 格），得到 **1 格宽的笔直垂直断面**——不是斜坡、不分档；
-- 抬升是**整条剖面一起搬**（所有噪声叶子 **+** 原版 `y_clamped_gradient` 深度梯度/滑移项），
-  所以墙两侧高度差恒等于 `wallHeight`，与当地地形起伏无关；墙那边就是一块整体抬高
-  30 格的正常地形，洞穴、含水层、biome 一起跟过去；
-- 墙线是两个轴向 1D 值噪声的零交叉线，因此是**笔直、轴向、可持续数百格**的长墙；
-- 水平调制有界（默认强度 0.5 < 1，导数 ∈ [0.5, 1.5]），只做轻度搬运，不产生折叠/碎片；
-  正常区内一切都返回原坐标，与原版逐位一致。
+- **片内仍是原来的地形**（草、土、沙、石头、甚至树都在），只是整体挪了一个高度；
+- **片与片之间是竖直断面**（沿 Z 每 ~56 格一道细壁、沿 X 每 ~160 格一道粗台阶），
+  最高几片（抬升 250+ 格）会顶到建造上限 y=320 被切平 —— 就是"看不到顶的墙"；
+- **分层锯齿折回**（强度 104 > 周期 72）→ 同一列出现多个"地表" → 石壁里的
+  **夹层、镂空、拱洞** —— 老版本边境之地最标志性的外观；
+- 切片边界随高度摆动（`lean`）+ 随高度倾斜的剪切（`shear`）→ 崖面参差、有悬挑；
+- 正常区内一切返回原坐标，与原版逐位一致。
 
 当前默认参数（`config/FarlandsConfig.java`）：
 
 ```text
 正常区 10×10 chunks（160×160 格） / 过渡区 16 格
-主谐波 0.5 @ 128 格（轻度水平搬运）  +  次谐波 0（关闭）
-垂直阶跃墙 30 格（wallLevel 0/1 阶跃，突然抬升）  +  锯齿 0（关闭）
+切片：X 56 格 @160 格（4 档） + Z 40 格 @56 格（4 档）   → 抬升 0..288 格，最高顶到建造上限
+分层锯齿：104 格 @72 格（折回 → 夹层/镂空） + 剪切 48 格 @96 格
+水平：主谐波 0.5 @128 格（轻度搬运）  +  次谐波 0（关闭）
 ```
 
 历史成因分析（12,550,824 那个数字怎么来的）与设计取舍见 [`docs/DESIGN.md`](docs/DESIGN.md)。
@@ -169,11 +167,14 @@ java -Xmx2G -jar ~/.gradle/caches/fabric-loom/1.21.1/minecraft-server.jar --nogu
 
 | 参数 | 默认 | 作用 |
 | --- | --- | --- |
-| `FARLANDS_WALL_HEIGHT_BLOCKS` | 30 | **边境之墙**：远区整列抬升的格数，0=关闭（"突然抬上去"的唯一来源） |
+| `FARLANDS_SLAB_STEP_X/LATTICE_X` | 56 @ 160 | 沿 X 的粗台阶：每 160 格一片，片间错开 56 格 |
+| `FARLANDS_SLAB_STEP_Z/LATTICE_Z` | 40 @ 56 | 沿 Z 的细切片：每 56 格一道竖壁，错开 40 格 |
+| `FARLANDS_SLAB_LEVELS` | 4 | 每轴档数：抬升量 = 档位 × STEP（最高 3×56+3×40 = 288 格） |
+| `VERTICAL_WARP_STRENGTH/PERIOD` | 104 @ 72 | 竖直分层锯齿（强度>周期 ⇒ 折回）：夹层/镂空/拱洞 |
+| `FARLANDS_SHEAR_STRENGTH/PERIOD` | 48 @ 96 | 随高度倾斜的剪切：悬挑/倾斜层理 |
 | `FARLANDS_PRIMARY_STRENGTH/PERIOD` | 0.5 / 128 | 主谐波：轻度水平搬运（>1 会产生折叠/碎片） |
-| `FARLANDS_SECONDARY_STRENGTH/PERIOD` | 0 / 320 | 次谐波：默认关闭（打乱 biome/地形格局，属"过度"） |
-| `FARLANDS_SAWTOOTH_STRENGTH/PERIOD` | 0 / 128 | 锯齿断层：水平位移断层，平坦地带看不出、又易碎片化，默认关闭 |
-| `VERTICAL_WARP_STRENGTH/PERIOD` | 0 / 64 | 平滑垂直畸变，默认关闭 |
+| `FARLANDS_SECONDARY_STRENGTH/PERIOD` | 0 / 320 | 次谐波：默认关闭 |
+| `FARLANDS_SAWTOOTH_STRENGTH/PERIOD` | 0 / 128 | 水平锯齿断层：默认关闭 |
 | `TRANSITION_WIDTH_BLOCKS` | 16 | 过渡区宽度（1 区块） |
 | `NORMAL_REGION_CHUNKS` | 10 | 正常区边长（10×10 chunks） |
 

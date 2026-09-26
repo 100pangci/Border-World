@@ -103,19 +103,20 @@ public final class SelfCheck {
             base.primaryStrength(), base.primaryPeriod(), base.primaryPhaseX(), base.primaryPhaseZ(),
             base.secondaryStrength(), base.secondaryPeriod(), base.secondaryPhaseX(), base.secondaryPhaseZ(),
             base.radialRamp(), base.verticalStrength(), base.verticalPeriod(), 0.0, base.sawPeriod(),
-            base.wallHeight());
+            base.slabStepX(), base.slabLatticeX(), base.slabStepZ(), base.slabLatticeZ(), base.slabLevels(),
+            base.shearStrength(), base.shearPeriod());
         FarlandsTransform t = new FarlandsTransform(0.0, 0.0, FarlandsConfig.normalRegion(0.0, 0.0), noSaw);
+        // 连续性用二阶差分判定：一阶差分在过渡带会被 alpha 斜坡抬高（那是设计内的渐变，不是跳变）
         double step = 0.25;
-        double maxAnomaly = 0.0;
-        for (double u = 70.0; u <= 130.0; u += step) {
-            double prev = t.transformX(u - step, 64.0, 0.0);
-            double curr = t.transformX(u, 64.0, 0.0);
-            maxAnomaly = Math.max(maxAnomaly, Math.abs((curr - prev) - step));
+        double maxSecond = 0.0;
+        for (double u = 60.0; u <= 140.0; u += step) {
+            double fm = t.transformX(u - step, 64.0, 0.0);
+            double f0 = t.transformX(u, 64.0, 0.0);
+            double fp = t.transformX(u + step, 64.0, 0.0);
+            maxSecond = Math.max(maxSecond, Math.abs((fp - f0) - (f0 - fm)));
         }
-        // 平滑部分导数上界 = 1 + primary + secondary = 1 + 1.25 + 0.85 = 3.1
-        double bound = (FarlandsConfig.FARLANDS_PRIMARY_STRENGTH + FarlandsConfig.FARLANDS_SECONDARY_STRENGTH) * step + 0.15;
-        expect("平滑部分连续（无跳变），最大偏差=" + String.format("%.4f", maxAnomaly)
-            + " ≤ " + String.format("%.3f", bound), maxAnomaly <= bound);
+        expect("平滑部分二阶差分有界（无跳变），实测 " + String.format("%.4f", maxSecond) + " ≤ 0.300",
+            maxSecond <= 0.3);
 
         // 锯齿：周期边界处跳变幅度必须等于 strength
         double strength = FarlandsConfig.FARLANDS_SAWTOOTH_STRENGTH;
@@ -180,14 +181,12 @@ public final class SelfCheck {
     }
 
     private static void checkWallStep() {
-        double height = FarlandsConfig.FARLANDS_WALL_HEIGHT_BLOCKS;
-        if (height == 0.0) {
-            passed++;
-            System.out.println("  [OK] 垂直阶跃已关闭（无竖墙）");
-            return;
-        }
-
         FarlandsTransform t = new FarlandsTransform(8.0, 8.0, FarlandsConfig.normalRegion(8.0, 8.0), FarlandsConfig.params());
+        double layer = FarlandsConfig.VERTICAL_WARP_STRENGTH / 2.0;
+        int levels = FarlandsConfig.FARLANDS_SLAB_LEVELS;
+        double stepX = FarlandsConfig.FARLANDS_SLAB_STEP_X;
+        double stepZ = FarlandsConfig.FARLANDS_SLAB_STEP_Z;
+        double maxLift = (levels - 1) * (stepX + stepZ);
 
         boolean yUnchangedInside = true;
         for (double x = -60.0; x <= 76.0; x += 3.1) {
@@ -199,72 +198,65 @@ public final class SelfCheck {
         }
         expect("正常区内 Y 坐标严格不变", yUnchangedInside);
 
-        // 远区：每列的抬升量只有 0 / height 两种，且与 y 无关（整列一起搬）
-        java.util.Set<Long> levels = new java.util.TreeSet<>();
-        boolean columnInvariant = true;
-        for (double x = 200.0; x <= 800.0; x += 1.7) {
-            for (double z = 200.0; z <= 800.0; z += 2.3) {
-                double shift = 64.0 - t.transformY(x, 64.0, z);
+        java.util.Set<Long> lifts = new java.util.TreeSet<>();
+        boolean bounded = true;
+        for (double x = 200.0; x <= 900.0; x += 1.7) {
+            for (double z = 200.0; z <= 900.0; z += 2.3) {
+                double lift = t.wallShiftAt(x, 200.0, z);
+                lifts.add(Math.round(lift));
+                if (lift < -1e-9 || lift > maxLift + 1e-9) {
+                    bounded = false;
+                }
                 for (double y : new double[] {-60.0, 0.0, 64.0, 200.0, 319.0}) {
-                    if (Math.abs((y - t.transformY(x, y, z)) - shift) > 1e-9) {
-                        columnInvariant = false;
+                    double sampled = t.transformY(x, y, z);
+                    if (Math.abs(sampled - y) > maxLift + layer + 1e-9) {
+                        bounded = false;
                     }
                 }
-                levels.add(Math.round(shift / height));
             }
         }
-        expect("远区抬升量只有 0 / " + (int) height + " 格两种（实测档位 " + levels + "）",
-            levels.size() == 2 && levels.stream().allMatch(v -> v == 0L || v == 1L));
-        expect("同一列内所有高度抬升量一致（整列平移）", columnInvariant);
+        expect("远区抬升量有界（0.." + (int) maxLift + " 格，实测档位 " + lifts.size() + " 种）",
+            bounded && lifts.size() >= 8);
+        expect("抬升量恰为两级切片之和（档位数为 " + levels + "×" + levels + " 种）",
+            lifts.size() <= levels * levels);
 
-        // 墙面：越过墙线时一次性跳满 height（"突然抬上去"，无斜坡/无中间档）
+        // 切片断面：跨过切片边界时抬升量一次性跳变 ≥ 一级台阶
         java.util.Set<Long> jumps = new java.util.TreeSet<>();
-        int wallCount = 0;
-        double previous = t.transformY(200.0, 64.0, 300.0);
-        for (double x = 200.0; x <= 2000.0; x += 0.5) {
-            double current = t.transformY(x, 64.0, 300.0);
-            double delta = previous - current;
-            if (Math.abs(delta) > 1e-9) {
-                jumps.add(Math.round(Math.abs(delta) / height));
-                wallCount++;
+        double previous = t.wallShiftAt(200.0, 200.0, 300.0);
+        for (double z = 200.0; z <= 2000.0; z += 0.5) {
+            double current = t.wallShiftAt(200.0, 200.0, z);
+            double delta = Math.abs(current - previous);
+            if (delta > 1e-9) {
+                jumps.add(Math.round(delta));
             }
             previous = current;
         }
-        expect("墙面跳变幅度恰为 " + (int) height + " 格（实测档位 " + jumps + "）",
-            !jumps.isEmpty() && jumps.stream().allMatch(v -> v == 1L));
+        expect("切片断面一次性跳变（" + (int) stepZ + "~" + (int) ((levels - 1) * (stepX + stepZ)) + " 格，实测档位 " + jumps + "）",
+            !jumps.isEmpty() && jumps.stream().allMatch(v -> v >= (long) stepZ - 1));
 
-        // 墙是"笔直轴向"的：同一 z 线上所有墙线位置固定，扫描不同 z 时墙线不漂移
-        double firstWall = -1.0;
-        double scan = 200.0;
-        double prev = t.transformY(scan, 64.0, 300.0);
-        for (double x = scan; x <= 2000.0; x += 0.5) {
-            double cur = t.transformY(x, 64.0, 300.0);
-            if (Math.abs(prev - cur) > 1e-9) {
-                firstWall = x;
+        // 分层锯齿必须真的"折回"：沿 y 扫描时出现非单调（否则没有夹层/镂空）
+        boolean nonMonotonic = false;
+        double prevY = t.transformY(300.0, 0.0, 300.0);
+        for (double y = 1.0; y <= 400.0; y += 1.0) {
+            double current = t.transformY(300.0, y, 300.0);
+            if (current < prevY - 1e-9) {
+                nonMonotonic = true;
                 break;
             }
-            prev = cur;
+            prevY = current;
         }
-        expect("存在竖直墙面（在 z=300 处找到墙线 x=" + firstWall + "）", firstWall > 0.0);
-        boolean straight = true;
-        if (firstWall > 0.0) {
-            for (double z = 300.0; z <= 380.0; z += 1.0) {
-                boolean found = false;
-                for (double x = firstWall - 1.0; x <= firstWall + 1.0; x += 0.125) {
-                    double a = t.transformY(x, 64.0, z);
-                    double b = t.transformY(x + 0.125, 64.0, z);
-                    if (Math.abs(a - b) > 1e-9) {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) {
-                    straight = false;
-                    break;
-                }
+        expect("分层锯齿出现折回（同一列多个地表 → 夹层/镂空）", nonMonotonic);
+
+        // 切片边界随高度摆动（参差崖面）
+        boolean lean = false;
+        for (double y = 0.0; y <= 400.0; y += 8.0) {
+            if (com.borderworld.core.WorldgenMath.wallLeanX(y) != com.borderworld.core.WorldgenMath.wallLeanX(0.0)
+                || com.borderworld.core.WorldgenMath.wallLeanZ(y) != com.borderworld.core.WorldgenMath.wallLeanZ(0.0)) {
+                lean = true;
+                break;
             }
         }
-        expect("墙面沿轴向笔直（z 方向 80 格内位置不漂移）", straight);
+        expect("切片边界随高度摆动（参差崖面）", lean);
     }
 
     private static void checkClassicReferenceMath() {

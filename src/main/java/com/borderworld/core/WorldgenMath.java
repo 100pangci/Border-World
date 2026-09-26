@@ -104,6 +104,30 @@ public final class WorldgenMath {
     }
 
     /**
+     * 竖直分层锯齿：把"采样的高度"按 {@code period} 分段、每段整体偏移，
+     * 段与段之间跳变 {@code strength} 格。
+     *
+     * <p>这是老版本边境之地出现<b>夹层/镂空/悬空石板</b>的机制：高度采样被折回后，
+     * 同一列会同时满足多个"地表"条件（密度零点不止一个），于是石壁被打出空洞与平台。
+     *
+     * @param y       竖直采样坐标
+     * @param phase   相位（由 {@link #layerPhase} 提供，避免所有列在同一高度被切开）
+     */
+    public static double layerWarp(double y, double strength, double period, double phase) {
+        if (strength == 0.0 || period == 0.0) {
+            return 0.0;
+        }
+        double shifted = (y + phase) / period;
+        double fraction = shifted - Math.floor(shifted);
+        return strength * (fraction - 0.5);
+    }
+
+    /** 分层锯齿的位置相位：同一高度在不同 (x,z) 处错开，避免形成整齐的全球横带。 */
+    public static double layerPhase(double x, double z) {
+        return 32.0 * valueNoise(x, z, 112.0, 0x1B873593);
+    }
+
+    /**
      * 墙面阶跃 ∈ {0, 1}：沿 X / Z 各自的低频一维噪声取阈值。
      *
      * <p>这是"原版边境之墙"的现代做法：阈值一侧整片抬高一个档位，
@@ -114,6 +138,43 @@ public final class WorldgenMath {
         boolean liftX = valueNoise1D(x, 112.0, 0x9E3779B9) > 0.0;
         boolean liftZ = valueNoise1D(z, 112.0, 0x85EBCA6B) > 0.0;
         return liftX != liftZ ? 1.0 : 0.0;
+    }
+
+    /**
+     * 含"随高度摆动"的墙面阶跃：墙线的水平位置随 y 缓慢摆动。
+     *
+     * <p>这是老版本边境之地那种<b>参差崖面 / 叠檐 / 石柱</b>的来源：
+     * 抬升量在竖直方向不再恒定，采样剖面随高度被推挤，
+     * 崖面就从一张平板变成层层错开的石壁。
+     */
+    public static double wallLevelAt(double x, double y, double z) {
+        return wallLevel(x + wallLeanX(y), z + wallLeanZ(y));
+    }
+
+    /**
+     * 切片档位：一维低频值噪声量化成 {@code levels} 档（0 .. levels-1）。
+     *
+     * <p>老版本边境之地的地形就是被"切片"的：同一个原地形沿轴被错开成若干片，
+     * 片与片之间是竖直断面（石壁），片内仍是原来的地形（草、土、石头都在）。
+     */
+    public static int slabLevel(double v, double lattice, int seed, int levels) {
+        double n = valueNoise1D(v, lattice, seed);
+        double t = (n + 1.0) * 0.5;
+        int level = (int) Math.floor(t * levels);
+        if (level >= levels) {
+            level = levels - 1;
+        }
+        return level < 0 ? 0 : level;
+    }
+
+    /** 墙线在 X 方向的随高度偏移（格），两个频率叠加避免过于规则。 */
+    public static double wallLeanX(double y) {
+        return 26.0 * Math.sin(y / 41.0 + 0.6) + 9.0 * Math.sin(y / 13.0 + 2.3);
+    }
+
+    /** 墙线在 Z 方向的随高度偏移（格）。 */
+    public static double wallLeanZ(double y) {
+        return 26.0 * Math.sin(y / 37.0 + 2.1) + 9.0 * Math.sin(y / 17.0 + 0.4);
     }
 
     /** 一维值噪声，返回 [-1,1]。 */

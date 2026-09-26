@@ -37,7 +37,13 @@ public final class FarlandsTransform {
         double verticalPeriod,
         double sawStrength,
         double sawPeriod,
-        double wallHeight
+        double slabStepX,
+        double slabLatticeX,
+        double slabStepZ,
+        double slabLatticeZ,
+        int slabLevels,
+        double shearStrength,
+        double shearPeriod
     ) {
         public boolean hasVerticalWarp() {
             return this.verticalStrength != 0.0 && this.verticalPeriod != 0.0;
@@ -71,7 +77,7 @@ public final class FarlandsTransform {
     }
 
     private static Params defaultParams() {
-        return new Params(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0);
+        return new Params(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1, 0.0, 1.0);
     }
 
     public boolean isIdentity() {
@@ -125,14 +131,32 @@ public final class FarlandsTransform {
      * 平移该格数：在抬高的区域按 {@code y - shift} 采样，等价于地形整体抬升。
      */
     public double wallShiftAt(double x, double z) {
-        if (this.identity || this.params.wallHeight() == 0.0) {
+        return wallShiftAt(x, 64.0, z);
+    }
+
+    /**
+     * 该列（该高度）的目标垂直位移（格，正数 = 地形整体抬高）。
+     *
+     * <p>老版本边境之地的形态来源：原地形沿轴被<b>切片</b>，每片整体错开不同高度
+     * （沿 Z 的细切片 + 沿 X 的粗台阶，两级叠加），片与片之间是竖直石壁；
+     * 片内仍是原来的地形（材质/形状不变）。最高几片会顶到建造上限被切平。
+     *
+     * <p>切片边界随高度摆动（{@link WorldgenMath#wallLeanX}），所以崖面参差不齐。
+     */
+    public double wallShiftAt(double x, double y, double z) {
+        if (this.identity) {
             return 0.0;
         }
         double alpha = getDistortionFactor(x, z);
         if (alpha == 0.0) {
             return 0.0;
         }
-        return alpha * this.params.wallHeight() * WorldgenMath.wallLevel(x, z);
+        int levels = Math.max(1, this.params.slabLevels());
+        double levelX = WorldgenMath.slabLevel(
+            x + WorldgenMath.wallLeanX(y), this.params.slabLatticeX(), 0x2545F491, levels);
+        double levelZ = WorldgenMath.slabLevel(
+            z + WorldgenMath.wallLeanZ(y), this.params.slabLatticeZ(), 0x51ED270B, levels);
+        return levelX * this.params.slabStepX() + levelZ * this.params.slabStepZ();
     }
 
     // ------------------------------------------------------------------
@@ -169,22 +193,40 @@ public final class FarlandsTransform {
         }
         double u = x - this.centerX;
         double warped = this.centerX + farAxis(u, this.params.primaryPhaseX(), this.params.secondaryPhaseX());
-        return x + alpha * (warped - x);
+        return x + alpha * ((warped - x) + shearX(y));
+    }
+
+    /** 随高度倾斜的剪切（X 方向）：不同高度的石壁错开 → 悬挑/空隙。 */
+    private double shearX(double y) {
+        if (this.params.shearStrength() == 0.0 || this.params.shearPeriod() == 0.0) {
+            return 0.0;
+        }
+        return this.params.shearStrength() * Math.sin(y / this.params.shearPeriod() + 0.9);
+    }
+
+    /** 随高度倾斜的剪切（Z 方向）。 */
+    private double shearZ(double y) {
+        if (this.params.shearStrength() == 0.0 || this.params.shearPeriod() == 0.0) {
+            return 0.0;
+        }
+        return this.params.shearStrength() * Math.sin(y / this.params.shearPeriod() + 3.1);
     }
 
     public double transformY(double x, double y, double z, double alpha) {
         if (this.identity || alpha == 0.0) {
             return y;
         }
+        // 竖直方向不做渐变（硬开关）：正常区外直接"换一套地形"，
+        // 这样墙面才是突然出现的峭壁，而不是过渡带里的阶梯斜坡。
         double displacement = 0.0;
-        if (this.params.wallHeight() != 0.0) {
-            // 取负：采样点下移 N 格 = 该列地形整体抬高 N 格
-            displacement -= this.params.wallHeight() * WorldgenMath.wallLevel(x, z);
-        }
+        // 取负：采样点下移 N 格 = 该片地形整体抬高 N 格（切片边界随高度摆动 → 参差崖面）
+        displacement -= wallShiftAt(x, y, z);
         if (this.params.hasVerticalWarp()) {
-            displacement += WorldgenMath.harmonicWarp(y, this.params.verticalStrength(), this.params.verticalPeriod(), 0.0);
+            // 竖直分层锯齿：产生夹层 / 镂空 / 悬空石板（老版本边境之地的外观特征）
+            displacement += WorldgenMath.layerWarp(
+                y, this.params.verticalStrength(), this.params.verticalPeriod(), WorldgenMath.layerPhase(x, z));
         }
-        return y + alpha * displacement;
+        return y + displacement;
     }
 
     public double transformZ(double x, double y, double z, double alpha) {
@@ -193,7 +235,7 @@ public final class FarlandsTransform {
         }
         double u = z - this.centerZ;
         double warped = this.centerZ + farAxis(u, this.params.primaryPhaseZ(), this.params.secondaryPhaseZ());
-        return z + alpha * (warped - z);
+        return z + alpha * ((warped - z) + shearZ(y));
     }
 
     // ------------------------------------------------------------------
@@ -230,6 +272,8 @@ public final class FarlandsTransform {
             + ", ramp=" + this.params.radialRamp()
             + ", vertical=" + this.params.verticalStrength() + "@" + this.params.verticalPeriod()
             + ", sawtooth=" + this.params.sawStrength() + "@" + this.params.sawPeriod()
-            + ", wallHeight=" + this.params.wallHeight() + "]";
+            + ", slabStepX=" + this.params.slabStepX() + "@" + this.params.slabLatticeX()
+            + ", slabStepZ=" + this.params.slabStepZ() + "@" + this.params.slabLatticeZ()
+            + ", slabLevels=" + this.params.slabLevels() + "]";
     }
 }
