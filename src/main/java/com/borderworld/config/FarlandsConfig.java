@@ -77,8 +77,8 @@ public final class FarlandsConfig {
      * 折回会让密度剖面在同一列出现多个零点 → 石壁被打出空洞与平台。
      * 0 = 关闭（墙面会是一块干净的整体峭壁）。
      */
-    public static final double VERTICAL_WARP_STRENGTH = 128.0;
-    public static final double VERTICAL_WARP_PERIOD = 48.0;
+    public static final double VERTICAL_WARP_STRENGTH = 0.0;
+    public static final double VERTICAL_WARP_PERIOD = 64.0;
 
     /**
      * 锯齿断层：每 {@code period} 格产生一次幅度 {@code strength} 的<b>水平</b>坐标跳变。
@@ -88,8 +88,8 @@ public final class FarlandsConfig {
      * "突然抬上去"改由切片抬升（见 {@link #FARLANDS_SLAB_STEP_X}）负责，
      * 高度恒定、与当地起伏无关。
      */
-    public static final double FARLANDS_SAWTOOTH_STRENGTH = 0.0;
-    public static final double FARLANDS_SAWTOOTH_PERIOD = 128.0;
+    public static final double FARLANDS_SAWTOOTH_STRENGTH = 48.0;
+    public static final double FARLANDS_SAWTOOTH_PERIOD = 96.0;
 
     // ------------------------------------------------------------------
     // 切片抬升（"边境之墙"的形态来源）
@@ -102,18 +102,30 @@ public final class FarlandsConfig {
      * <p>两级叠加（X 粗 + Z 细）复现老版本边境之地的层层石壁：
      * 原地形被切片整体错开，片内材质不变，片间是竖直断面。
      */
-    public static final double FARLANDS_SLAB_STEP_X = 56.0;
+    public static final double FARLANDS_SLAB_STEP_X = 32.0;
     public static final double FARLANDS_SLAB_LATTICE_X = 96.0;
 
     /** 沿 Z 的细切片：更密的竖壁（老版本那种一眼看不到头的密集石壁）。 */
-    public static final double FARLANDS_SLAB_STEP_Z = 40.0;
-    public static final double FARLANDS_SLAB_LATTICE_Z = 32.0;
+    public static final double FARLANDS_SLAB_STEP_Z = 24.0;
+    public static final double FARLANDS_SLAB_LATTICE_Z = 48.0;
 
     /** 每轴切片档数：抬升量 = 档位(0..n-1) × STEP。4 档 ⇒ 最高约 3×56+3×40 = 288 格（地表正好顶到建造上限）。 */
     public static final int FARLANDS_SLAB_LEVELS = 4;
 
     /** 小尺度起伏的幅度上限（格）：墙面/台面被揉碎的程度（见 WorldgenMath#chaosLift）。 */
-    public static final double CHAOS_RANGE = 46.0;
+    public static final double CHAOS_RANGE = 20.0;
+
+    /**
+     * 竖直放大倍数：绕 {@link #FARLANDS_VERTICAL_PIVOT} 把原地形的起伏放大该倍数。
+     *
+     * <p>这是"地形变极端"的关键——只做平移时，平地搬出来还是平板；
+     * 放大之后平地变丘陵、小坡变巨崖，再叠加切片/错位/折回才是老版本那种形态。
+     * 1 = 关闭；建议 6~10。
+     */
+    public static final double FARLANDS_VERTICAL_AMPLIFY = 4.0;
+
+    /** 竖直放大的基准高度（格）：一般取海平面，地形在此高度上下被放大。 */
+    public static final double FARLANDS_VERTICAL_PIVOT = 64.0;
 
     /**
      * 随高度倾斜的剪切：不同高度把地形水平错开该幅度（格）。
@@ -129,8 +141,8 @@ public final class FarlandsConfig {
      * <p>这是"边境之地错位感"的来源：地形被切成水平层，每层整体左右挪开，
      * 层间出现悬挑、错缝、错开露出的层理。0 = 关闭。
      */
-    public static final double FARLANDS_LAYER_SHIFT_STRENGTH = 96.0;
-    public static final double FARLANDS_LAYER_SHIFT_PERIOD = 32.0;
+    public static final double FARLANDS_LAYER_SHIFT_STRENGTH = 0.0;
+    public static final double FARLANDS_LAYER_SHIFT_PERIOD = 48.0;
 
     // ------------------------------------------------------------------
     // 运行开关
@@ -196,7 +208,9 @@ public final class FarlandsConfig {
             FARLANDS_SHEAR_STRENGTH,
             FARLANDS_SHEAR_PERIOD,
             FARLANDS_LAYER_SHIFT_STRENGTH,
-            FARLANDS_LAYER_SHIFT_PERIOD
+            FARLANDS_LAYER_SHIFT_PERIOD,
+            FARLANDS_VERTICAL_AMPLIFY,
+            FARLANDS_VERTICAL_PIVOT
         );
     }
 
@@ -213,6 +227,7 @@ public final class FarlandsConfig {
             + ", slabZ=" + FARLANDS_SLAB_STEP_Z + "@" + (int) FARLANDS_SLAB_LATTICE_Z + "格"
             + " x" + FARLANDS_SLAB_LEVELS + "档"
             + ", shear=" + FARLANDS_SHEAR_STRENGTH + "@" + (int) FARLANDS_SHEAR_PERIOD + "格"
-            + ", layerShift=" + FARLANDS_LAYER_SHIFT_STRENGTH + "@" + (int) FARLANDS_LAYER_SHIFT_PERIOD + "格";
+            + ", layerShift=" + FARLANDS_LAYER_SHIFT_STRENGTH + "@" + (int) FARLANDS_LAYER_SHIFT_PERIOD + "格"
+            + ", amplify=×" + FARLANDS_VERTICAL_AMPLIFY + "@" + (int) FARLANDS_VERTICAL_PIVOT + "格";
     }
 }

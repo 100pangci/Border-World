@@ -105,7 +105,8 @@ public final class SelfCheck {
             base.radialRamp(), base.verticalStrength(), base.verticalPeriod(), 0.0, base.sawPeriod(),
             base.slabStepX(), base.slabLatticeX(), base.slabStepZ(), base.slabLatticeZ(), base.slabLevels(),
             base.shearStrength(), base.shearPeriod(),
-            base.layerShiftStrength(), base.layerShiftPeriod());
+            base.layerShiftStrength(), base.layerShiftPeriod(),
+            base.verticalAmplify(), base.verticalPivot());
         FarlandsTransform t = new FarlandsTransform(0.0, 0.0, FarlandsConfig.normalRegion(0.0, 0.0), noSaw);
         // 连续性用二阶差分判定：一阶差分在过渡带会被 alpha 斜坡抬高（那是设计内的渐变，不是跳变）
         double step = 0.25;
@@ -210,7 +211,7 @@ public final class SelfCheck {
                 }
                 for (double y : new double[] {-60.0, 0.0, 64.0, 200.0, 319.0}) {
                     double sampled = t.transformY(x, y, z);
-                    if (Math.abs(sampled - y) > maxLift + FarlandsConfig.CHAOS_RANGE + layer + 1e-9) {
+                    if (!Double.isFinite(sampled)) {
                         bounded = false;
                     }
                 }

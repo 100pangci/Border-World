@@ -45,7 +45,9 @@ public final class FarlandsTransform {
         double shearStrength,
         double shearPeriod,
         double layerShiftStrength,
-        double layerShiftPeriod
+        double layerShiftPeriod,
+        double verticalAmplify,
+        double verticalPivot
     ) {
         public boolean hasVerticalWarp() {
             return this.verticalStrength != 0.0 && this.verticalPeriod != 0.0;
@@ -79,7 +81,7 @@ public final class FarlandsTransform {
     }
 
     private static Params defaultParams() {
-        return new Params(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1, 0.0, 1.0, 0.0, 1.0);
+        return new Params(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1, 0.0, 1.0, 0.0, 1.0, 1.0, 64.0);
     }
 
     public boolean isIdentity() {
@@ -224,15 +226,19 @@ public final class FarlandsTransform {
         }
         // 竖直方向不做渐变（硬开关）：正常区外直接"换一套地形"，
         // 这样墙面才是突然出现的峭壁，而不是过渡带里的阶梯斜坡。
-        double displacement = 0.0;
         // 取负：采样点下移 N 格 = 该片地形整体抬高 N 格（切片边界随高度摆动 → 参差崖面）
-        displacement -= wallShiftAt(x, y, z);
+        double lift = wallShiftAt(x, y, z);
+        // 竖直放大：绕 pivot 把原地形的起伏放大 amplify 倍
+        // （平地 → 丘陵，小坡 → 巨崖；这是"地形形状变极端"的来源，光靠平移做不出来）
+        double amplify = 1.0 + alpha * (this.params.verticalAmplify() - 1.0);
+        double pivot = this.params.verticalPivot();
+        double sampledY = pivot + (y - lift - pivot) / amplify;
         if (this.params.hasVerticalWarp()) {
             // 竖直分层锯齿：产生夹层 / 镂空 / 悬空石板（老版本边境之地的外观特征）
-            displacement += WorldgenMath.layerWarp(
+            sampledY += WorldgenMath.layerWarp(
                 y, this.params.verticalStrength(), this.params.verticalPeriod(), WorldgenMath.layerPhase(x, z));
         }
-        return y + displacement;
+        return sampledY;
     }
 
     public double transformZ(double x, double y, double z, double alpha) {
