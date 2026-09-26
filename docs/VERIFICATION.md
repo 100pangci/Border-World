@@ -47,6 +47,10 @@ python3 tools/slice_render.py --dir run/server --world world-demo8 \
 
 ## 最终形态：坐标钉死 + 高度层叠（2026-09-26 定稿，用户确认"完美"）
 
+角落（Corner Far Lands）处理：两轴同时溢出时，层理相位随 `uX/(uX+uZ)` 倾斜、
+层厚随比值伸缩 → 层理呈斜向并会出现融合/分裂（Wiki 的 "near-perfect diagonal
+lines ... all intersect at the corner" 与 "fusing together and splitting"）。
+
 对照 Minecraft Wiki《Far Lands/Cause》实现旧版机制，剖面渲染
 （`tools/slice_render.py`）可见 4~5 层地形重复堆叠、层间横切面与空隙、草顶完整。
 
@@ -62,6 +66,9 @@ python3 tools/slice_render.py --dir run/server --world world-demo8 \
 ```bash
 python3 tools/slice_render.py --dir run/server --world world-stack \
     --axis x --fixed 0 --from 88 --to 290 --y-min -64 --y-max 320 --out /tmp/opencode/stack.png
+# 角落区（x=200，两轴均溢出）：
+python3 tools/slice_render.py --dir run/server --world world-corner \
+    --axis x --fixed 200 --from 96 --to 280 --y-min -64 --y-max 320 --out /tmp/opencode/corner.png
 ```
 
 ## 阶段状态
