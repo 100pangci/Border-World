@@ -77,8 +77,8 @@ public final class FarlandsConfig {
      * 折回会让密度剖面在同一列出现多个零点 → 石壁被打出空洞与平台。
      * 0 = 关闭（墙面会是一块干净的整体峭壁）。
      */
-    public static final double VERTICAL_WARP_STRENGTH = 104.0;
-    public static final double VERTICAL_WARP_PERIOD = 72.0;
+    public static final double VERTICAL_WARP_STRENGTH = 112.0;
+    public static final double VERTICAL_WARP_PERIOD = 64.0;
 
     /**
      * 锯齿断层：每 {@code period} 格产生一次幅度 {@code strength} 的<b>水平</b>坐标跳变。
@@ -118,6 +118,16 @@ public final class FarlandsConfig {
      */
     public static final double FARLANDS_SHEAR_STRENGTH = 48.0;
     public static final double FARLANDS_SHEAR_PERIOD = 96.0;
+
+    /**
+     * 分层横向错位：每 {@code PERIOD} 格高度，水平采样位置跳变一次，
+     * 幅度最大 {@code STRENGTH} 格（随机）。
+     *
+     * <p>这是"边境之地错位感"的来源：地形被切成水平层，每层整体左右挪开，
+     * 层间出现悬挑、错缝、错开露出的层理。0 = 关闭。
+     */
+    public static final double FARLANDS_LAYER_SHIFT_STRENGTH = 64.0;
+    public static final double FARLANDS_LAYER_SHIFT_PERIOD = 48.0;
 
     // ------------------------------------------------------------------
     // 运行开关
@@ -181,7 +191,9 @@ public final class FarlandsConfig {
             FARLANDS_SLAB_LATTICE_Z,
             FARLANDS_SLAB_LEVELS,
             FARLANDS_SHEAR_STRENGTH,
-            FARLANDS_SHEAR_PERIOD
+            FARLANDS_SHEAR_PERIOD,
+            FARLANDS_LAYER_SHIFT_STRENGTH,
+            FARLANDS_LAYER_SHIFT_PERIOD
         );
     }
 
@@ -197,6 +209,7 @@ public final class FarlandsConfig {
             + ", slabX=" + FARLANDS_SLAB_STEP_X + "@" + (int) FARLANDS_SLAB_LATTICE_X + "格"
             + ", slabZ=" + FARLANDS_SLAB_STEP_Z + "@" + (int) FARLANDS_SLAB_LATTICE_Z + "格"
             + " x" + FARLANDS_SLAB_LEVELS + "档"
-            + ", shear=" + FARLANDS_SHEAR_STRENGTH + "@" + (int) FARLANDS_SHEAR_PERIOD + "格";
+            + ", shear=" + FARLANDS_SHEAR_STRENGTH + "@" + (int) FARLANDS_SHEAR_PERIOD + "格"
+            + ", layerShift=" + FARLANDS_LAYER_SHIFT_STRENGTH + "@" + (int) FARLANDS_LAYER_SHIFT_PERIOD + "格";
     }
 }

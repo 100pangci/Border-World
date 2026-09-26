@@ -43,7 +43,9 @@ public final class FarlandsTransform {
         double slabLatticeZ,
         int slabLevels,
         double shearStrength,
-        double shearPeriod
+        double shearPeriod,
+        double layerShiftStrength,
+        double layerShiftPeriod
     ) {
         public boolean hasVerticalWarp() {
             return this.verticalStrength != 0.0 && this.verticalPeriod != 0.0;
@@ -77,7 +79,7 @@ public final class FarlandsTransform {
     }
 
     private static Params defaultParams() {
-        return new Params(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1, 0.0, 1.0);
+        return new Params(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1, 0.0, 1.0, 0.0, 1.0);
     }
 
     public boolean isIdentity() {
@@ -193,7 +195,9 @@ public final class FarlandsTransform {
         }
         double u = x - this.centerX;
         double warped = this.centerX + farAxis(u, this.params.primaryPhaseX(), this.params.secondaryPhaseX());
-        return x + alpha * ((warped - x) + shearX(y));
+        double layerShift = WorldgenMath.layerShiftX(
+            y, this.params.layerShiftPeriod(), this.params.layerShiftStrength());
+        return x + alpha * ((warped - x) + shearX(y) + layerShift);
     }
 
     /** 随高度倾斜的剪切（X 方向）：不同高度的石壁错开 → 悬挑/空隙。 */
@@ -235,7 +239,9 @@ public final class FarlandsTransform {
         }
         double u = z - this.centerZ;
         double warped = this.centerZ + farAxis(u, this.params.primaryPhaseZ(), this.params.secondaryPhaseZ());
-        return z + alpha * ((warped - z) + shearZ(y));
+        double layerShift = WorldgenMath.layerShiftZ(
+            y, this.params.layerShiftPeriod(), this.params.layerShiftStrength());
+        return z + alpha * ((warped - z) + shearZ(y) + layerShift);
     }
 
     // ------------------------------------------------------------------

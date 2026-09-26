@@ -104,7 +104,8 @@ public final class SelfCheck {
             base.secondaryStrength(), base.secondaryPeriod(), base.secondaryPhaseX(), base.secondaryPhaseZ(),
             base.radialRamp(), base.verticalStrength(), base.verticalPeriod(), 0.0, base.sawPeriod(),
             base.slabStepX(), base.slabLatticeX(), base.slabStepZ(), base.slabLatticeZ(), base.slabLevels(),
-            base.shearStrength(), base.shearPeriod());
+            base.shearStrength(), base.shearPeriod(),
+            base.layerShiftStrength(), base.layerShiftPeriod());
         FarlandsTransform t = new FarlandsTransform(0.0, 0.0, FarlandsConfig.normalRegion(0.0, 0.0), noSaw);
         // 连续性用二阶差分判定：一阶差分在过渡带会被 alpha 斜坡抬高（那是设计内的渐变，不是跳变）
         double step = 0.25;
@@ -257,6 +258,20 @@ public final class SelfCheck {
             }
         }
         expect("切片边界随高度摆动（参差崖面）", lean);
+
+        // 分层横向错位：不同高度的水平采样位置必须不同（逐层错开）
+        java.util.Set<Long> shifts = new java.util.TreeSet<>();
+        boolean changesWithHeight = false;
+        double baseX = t.transformX(300.0, 8.0, 300.0);
+        for (double y = 0.0; y <= 320.0; y += 24.0) {
+            double sx = t.transformX(300.0, y, 300.0);
+            shifts.add(Math.round(sx * 1000));
+            if (Math.abs(sx - baseX) > 1.0) {
+                changesWithHeight = true;
+            }
+        }
+        expect("分层横向错位生效（同一点不同高度水平位置错开，" + shifts.size() + " 种）",
+            changesWithHeight && shifts.size() >= 5);
     }
 
     private static void checkClassicReferenceMath() {

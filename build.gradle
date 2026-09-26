@@ -16,7 +16,7 @@ loom {
     runs {
         server {
             programArgs '--nogui'
-            vmArg '-Xmx1536M'
+            vmArg '-Xmx3G'
             vmArg "-Dborderworld.warpEnabled=${project.findProperty('bw.warp') ?: 'true'}"
             vmArg "-Dborderworld.selfTest=${project.findProperty('bw.selftest') ?: 'false'}"
             runDir 'run/server'

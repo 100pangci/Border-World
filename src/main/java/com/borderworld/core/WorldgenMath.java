@@ -124,7 +124,7 @@ public final class WorldgenMath {
 
     /** 分层锯齿的位置相位：同一高度在不同 (x,z) 处错开，避免形成整齐的全球横带。 */
     public static double layerPhase(double x, double z) {
-        return 32.0 * valueNoise(x, z, 112.0, 0x1B873593);
+        return 32.0 * hash01((int) Math.floor(x / 16.0), (int) Math.floor(z / 16.0), 0x1B873593);
     }
 
     /**
@@ -167,14 +167,37 @@ public final class WorldgenMath {
         return level < 0 ? 0 : level;
     }
 
-    /** 墙线在 X 方向的随高度偏移（格），两个频率叠加避免过于规则。 */
+    /**
+     * 分层横向错位：每 {@code period} 格高度，水平采样位置跳变一次（幅度由哈希决定）。
+     *
+     * <p>这是"边框之地错位感"的核心：地形被切成水平层，每层整体左右挪开一段距离，
+     * 层与层之间出现悬挑、错缝、露出的层理——老版本那种"地皮被切开又错位拼回去"的样子。
+     */
+    public static double layerShiftX(double y, double period, double strength) {
+        if (period == 0.0 || strength == 0.0) {
+            return 0.0;
+        }
+        int band = (int) Math.floor(y / period);
+        return strength * 0.5 * hash01(band, 0, 0x7FEB352D);
+    }
+
+    /** 分层横向错位（Z 方向，独立哈希）。 */
+    public static double layerShiftZ(double y, double period, double strength) {
+        if (period == 0.0 || strength == 0.0) {
+            return 0.0;
+        }
+        int band = (int) Math.floor(y / period);
+        return strength * 0.5 * hash01(band, 0, 0x846CA68B);
+    }
+
+    /** 墙线在 X 方向的随高度偏移（格）。 */
     public static double wallLeanX(double y) {
-        return 26.0 * Math.sin(y / 41.0 + 0.6) + 9.0 * Math.sin(y / 13.0 + 2.3);
+        return 22.0 * Math.sin(y / 41.0 + 0.6);
     }
 
     /** 墙线在 Z 方向的随高度偏移（格）。 */
     public static double wallLeanZ(double y) {
-        return 26.0 * Math.sin(y / 37.0 + 2.1) + 9.0 * Math.sin(y / 17.0 + 0.4);
+        return 22.0 * Math.sin(y / 37.0 + 2.1);
     }
 
     /** 一维值噪声，返回 [-1,1]。 */
