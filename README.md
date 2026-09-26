@@ -178,4 +178,15 @@ docs/
 
 ## License
 
-暂未指定（仓库默认保留所有权利）。
+本项目采用 **Mozilla Public License 2.0 (MPL-2.0)** —— 见 [`LICENSE`](LICENSE)。
+
+MPL 是"文件级 copyleft"：你可以自由使用、修改、再分发，甚至与其它（含闭源）代码组合；
+但对**本项目源文件**的修改需要以 MPL 继续开源（新增文件可以是任意许可）。
+源码文件已按惯例带上 MPL 声明头。
+
+```
+Copyright (c) 2026 100pangci
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+```
