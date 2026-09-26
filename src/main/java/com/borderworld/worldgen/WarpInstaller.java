@@ -3,6 +3,7 @@ package com.borderworld.worldgen;
 import com.borderworld.BorderWorld;
 import com.borderworld.mixin.accessor.DensityFunctionTypesNoiseAccess;
 import com.borderworld.mixin.accessor.DensityFunctionTypesShiftedNoiseAccess;
+import com.borderworld.mixin.accessor.DensityFunctionTypesYClampedGradientAccess;
 import com.borderworld.mixin.accessor.InterpolatedNoiseSamplerAccess;
 import com.borderworld.mixin.accessor.MultiNoiseSamplerAccess;
 import com.borderworld.mixin.accessor.NoiseConfigAccess;
@@ -97,6 +98,8 @@ public final class WarpInstaller {
         samplerAccess.borderworld$setDepth(depth);
         samplerAccess.borderworld$setWeirdness(weirdness);
 
+        BorderWorld.LOGGER.info("[BorderWorld] 畸变参数: {}", com.borderworld.config.FarlandsConfig.describe());
+
         if (BorderWorld.LOGGER.isInfoEnabled()) {
             BorderWorld.LOGGER.info("[BorderWorld] 已为 Overworld 安装噪声坐标变换（NoiseRouter + MultiNoiseSampler）");
         }
@@ -137,6 +140,12 @@ public final class WarpInstaller {
 
         if (function instanceof InterpolatedNoiseSampler interpolated) {
             return new WarpedInterpolatedNoiseSampler(function, (InterpolatedNoiseSamplerAccess) (Object) interpolated);
+        }
+
+        // 竖直剖面（深度梯度 / 地表滑移）必须一起做垂直位移，
+        // 否则地表高度会被未变换的梯度项拽回原位。
+        if (function instanceof DensityFunctionTypesYClampedGradientAccess gradient) {
+            return new WarpedYClampedGradient(function, gradient);
         }
 
         return function;

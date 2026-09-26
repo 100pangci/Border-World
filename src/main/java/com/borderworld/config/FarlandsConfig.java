@@ -28,8 +28,8 @@ public final class FarlandsConfig {
     /** 正常区边长（区块）。10 × 10 chunks = 160 × 160 格。 */
     public static final int NORMAL_REGION_CHUNKS = 10;
 
-    /** 过渡区宽度（方块）。1~2 个区块，默认 32 格 = 2 chunks。 */
-    public static final double TRANSITION_WIDTH_BLOCKS = 32.0;
+    /** 过渡区宽度（方块）。1~2 个区块，默认 16 格 = 1 chunk（墙在进入过渡区后很快到满高）。 */
+    public static final double TRANSITION_WIDTH_BLOCKS = 16.0;
 
     // ------------------------------------------------------------------
     // Far Lands 畸变（核心数学参数）
@@ -44,26 +44,22 @@ public final class FarlandsConfig {
      *   <li>A &gt; 1：局部折叠（出现镜像重复地形，更接近经典"重复结构"）</li>
      * </ul>
      */
-    public static final double FARLANDS_PRIMARY_STRENGTH = 1.25;
+    public static final double FARLANDS_PRIMARY_STRENGTH = 0.5;
 
     /** 主谐波周期（方块）。决定墙/平台的间距尺度。 */
-    public static final double FARLANDS_PRIMARY_PERIOD = 64.0;
+    public static final double FARLANDS_PRIMARY_PERIOD = 128.0;
 
     /** 主谐波在 X / Z 轴的相位（弧度）。相同相位 → 轴对称的方格状地形。 */
     public static final double FARLANDS_PRIMARY_PHASE_X = 0.0;
     public static final double FARLANDS_PRIMARY_PHASE_Z = 0.0;
 
     /**
-     * 次谐波强度/周期。
+     * 次谐波强度/周期。默认 0 = 关闭。
      *
-     * <p>这里同时承担两个作用：
-     * <ol>
-     *   <li>长周期（默认 320 格）大振幅：位移幅度可达几十格，足以打乱 climate/biome 与
-     *       地形格局，让"走几步就换一种地形"；</li>
-     *   <li>与主谐波叠加后把导数推向负值，产生折叠/镜像重复结构。</li>
-     * </ol>
+     * <p>开启后会大幅拉长位移尺度（相当于把 biome/地形格局也一起打乱），
+     * 属于"更激进"的效果；只想要干净的边境之墙时保持 0。
      */
-    public static final double FARLANDS_SECONDARY_STRENGTH = 0.85;
+    public static final double FARLANDS_SECONDARY_STRENGTH = 0.0;
     public static final double FARLANDS_SECONDARY_PERIOD = 320.0;
     public static final double FARLANDS_SECONDARY_PHASE_X = 0.0;
     public static final double FARLANDS_SECONDARY_PHASE_Z = 1.7;
@@ -75,25 +71,37 @@ public final class FarlandsConfig {
     public static final double FARLANDS_RADIAL_RAMP = 0.0;
 
     /**
-     * 垂直（Y 轴）畸变强度与周期。默认 0.5 = 中等强度。
-     *
-     * <p>竖直方向的畸变会带来"千层饼"一样的水平平台、悬空板块与竖向断层，
-     * 是让远区一眼就"不对劲"的关键手段；过强（&gt;1）会让垂直剖面局部反转，
-     * 可能出现大量悬空/倒置地形，可按需调节。
+     * 垂直（Y 轴）平滑畸变强度与周期。默认 0 = 关闭（竖墙由 {@link #FARLANDS_WALL_HEIGHT_BLOCKS} 的阶跃负责）。
      */
-    public static final double VERTICAL_WARP_STRENGTH = 0.5;
+    public static final double VERTICAL_WARP_STRENGTH = 0.0;
     public static final double VERTICAL_WARP_PERIOD = 64.0;
 
     /**
-     * 锯齿项（"墙"）：每 {@code period} 格产生一次幅度 {@code strength} 的坐标跳变，
-     * 在地形上形成一条竖直断层——这是让远区一眼就像经典 Far Lands 的关键项。
+     * 锯齿断层：每 {@code period} 格产生一次幅度 {@code strength} 的<b>水平</b>坐标跳变。
      *
-     * <p>强度要足够大（与 biome/地形格局的尺度相当，几百格），断层两侧才会落在
-     * 完全不同的地形上，从而出现几十格高的"墙"；太小只会平移一小片同质地貌。
-     * 0 = 关闭（只做平滑畸变，不会出现断层）。
+     * <p>默认 0 = 关闭。它搬的是"采样到的地形"，墙有多高取决于两地地形差多少：
+     * 在平坦地带几乎看不到，在起伏地带又会把不同 biome 的地形硬拼在一起（显得碎片化）。
+     * "突然抬上去"改由 {@link #FARLANDS_WALL_HEIGHT_BLOCKS} 的垂直阶跃负责，
+     * 高度恒定、与当地起伏无关。
      */
-    public static final double FARLANDS_SAWTOOTH_STRENGTH = 320.0;
-    public static final double FARLANDS_SAWTOOTH_PERIOD = 160.0;
+    public static final double FARLANDS_SAWTOOTH_STRENGTH = 0.0;
+    public static final double FARLANDS_SAWTOOTH_PERIOD = 128.0;
+
+    /**
+     * 边境之墙高度（格）：远区按轴向阶跃把地形<b>整列抬高</b>该格数。
+     *
+     * <p>这是"突然抬上去"的唯一来源。实现方式是把整条竖直剖面（所有噪声叶子
+     * <b>以及</b>原版 {@code y_clamped_gradient} 深度梯度/滑移项）按
+     * {@code y - N} 采样，等价于该列地形整体平移 N 格：
+     * <ul>
+     *   <li>墙线两侧高度差恒为 N 格（与当地起伏无关，平坦地带也成立）；</li>
+     *   <li>越过墙线时是 1 格宽的<b>垂直断面</b>，没有斜坡、没有分档；</li>
+     *   <li>墙那边就是一块整体抬高 N 格的正常地形（洞穴/含水层一起跟过去）。</li>
+     * </ul>
+     *
+     * <p>建议 20~40；0 = 关闭（只剩水平方向的轻度畸变）。
+     */
+    public static final double FARLANDS_WALL_HEIGHT_BLOCKS = 30.0;
 
     // ------------------------------------------------------------------
     // 运行开关
@@ -150,7 +158,8 @@ public final class FarlandsConfig {
             VERTICAL_WARP_STRENGTH,
             VERTICAL_WARP_PERIOD,
             FARLANDS_SAWTOOTH_STRENGTH,
-            FARLANDS_SAWTOOTH_PERIOD
+            FARLANDS_SAWTOOTH_PERIOD,
+            FARLANDS_WALL_HEIGHT_BLOCKS
         );
     }
 
@@ -162,6 +171,7 @@ public final class FarlandsConfig {
             + ", secondary=" + FARLANDS_SECONDARY_STRENGTH + "@" + (int) FARLANDS_SECONDARY_PERIOD + "格"
             + ", ramp=" + FARLANDS_RADIAL_RAMP
             + ", vertical=" + VERTICAL_WARP_STRENGTH + "@" + (int) VERTICAL_WARP_PERIOD + "格"
-            + ", sawtooth=" + FARLANDS_SAWTOOTH_STRENGTH + "@" + (int) FARLANDS_SAWTOOTH_PERIOD + "格";
+            + ", sawtooth=" + FARLANDS_SAWTOOTH_STRENGTH + "@" + (int) FARLANDS_SAWTOOTH_PERIOD + "格"
+            + ", wallHeight=" + FARLANDS_WALL_HEIGHT_BLOCKS + "格";
     }
 }

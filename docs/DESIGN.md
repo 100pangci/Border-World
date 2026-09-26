@@ -65,7 +65,10 @@ d v / d u = 1 + A1 cos(...) + A2 cos(...) + R
 
 - `DensityFunctionTypes$Noise#sample(NoisePos)`（`base_3d_noise`、cave/vein 噪声等）
 - `DensityFunctionTypes$ShiftedNoise#sample(NoisePos)`（气候噪声：温度/湿度/大陆性/侵蚀…）
-- 必要时覆盖 `WeirdScaledSampler` / `OldBlendedNoise`（按 1.21.1 实际实现确认）
+- `DensityFunctionTypes$YClampedGradient#sample(NoisePos)`（深度梯度 / 地表滑移项，
+  竖直剖面——**垂直阶跃墙必需**，见 2.4）
+- `InterpolatedNoiseSampler`（`base_3d_noise`）：因其 `sample` 只接受整数坐标，
+  按原版算法用分数坐标重算一遍（`WarpedInterpolatedNoiseSampler`）
 
 优点：
 
@@ -81,7 +84,7 @@ d v / d u = 1 + A1 cos(...) + A2 cos(...) + R
 
 ```text
 d <= R0            : 正常区（原版），R0 = NORMAL_REGION_CHUNKS*16/2 = 80 格（160×160 安全区）
-R0 < d < R0 + W    : 过渡区，W = TRANSITION_WIDTH_BLOCKS = 32 格（2 chunks）
+R0 < d < R0 + W    : 过渡区，W = TRANSITION_WIDTH_BLOCKS = 16 格（1 chunk）
 d >= R0 + W        : 完整边境之地
 alpha = smoothstep(clamp((d - R0)/W, 0, 1))     // C¹ 连续
 ```
@@ -89,7 +92,34 @@ alpha = smoothstep(clamp((d - R0)/W, 0, 1))     // C¹ 连续
 坐标变换按 `alpha` 混合：`p' = p + alpha * (far(p) - p)`；`alpha == 0` 时**不做任何浮点运算**。
 
 - 连续函数 → 跨 chunk 无断层（相邻 chunk 在共享采样点得到相同值）。
-- 过渡带 32 格内畸变幅度平滑增强。
+- 过渡带 16 格内畸变幅度平滑增强。
+
+### 2.4 边境之墙的最终实现（垂直剖面平移）
+
+目标观感：**原版那种"突然抬上去"的笔直巨墙**，不要分档、不要斜坡、不要碎片化。
+为此先后排除了三种方案（均有实测记录）：
+
+| 方案 | 结果 |
+| --- | --- |
+| A. 密度偏移（给密度加常数，高度 = 偏移 ÷ 当地梯度） | 高度完全不可控：梯度小的位置顶到 y=319，整片饱和 |
+| B. 只看水平位移（谐波/锯齿断层） | 平坦地形里"搬"不到高差——墙高 = 搬运距离上的地形起伏，本 seed 出生点附近是平坦沙漠，只有 5~10 格；锯齿还会把不同 biome 硬拼在一起（碎片化） |
+| C. 垂直位移但只包装噪声叶子 | 被**未包装的 `y_clamped_gradient`** 抵消：请求 36 格只抬起约 12 格，且被抹成斜坡 |
+
+最终方案（C 的修正版）：**把整条竖直剖面整体平移 `wallHeight` 格**。
+
+```text
+lift(x,z)   = alpha(x,z) * WALL_HEIGHT * wallLevel(x,z)      // 目标抬升量（格）
+wallLevel   = (nX(x) > 0) XOR (nZ(z) > 0)                    // 轴向 1D 值噪声，lattice 112
+transformY  = y - lift(x,z)                                  // 在更低处采样剖面
+```
+
+- 所有噪声叶子 **和** `y_clamped_gradient` 都用 `transformY` 取样，
+  于是"在 y 处求值"等价于"求原版在 y − lift 处的值" ⇒ **地表整体抬高 lift 格**。
+- `wallLevel` 只有 0/1：越过墙线的瞬间抬升量跳变 `wallHeight`（默认 30 格），
+  得到 1 格宽的垂直断面；墙线由两个 1D 值噪声的零交叉决定，因此**笔直、轴向、长**。
+- 高度差恒等于 `wallHeight`，与当地起伏无关；墙那边是整体抬高 30 格的正常地形，
+  洞穴、含水层、biome 一起跟过去。
+- 水平方向只保留很轻的主谐波（0.5 @ 128），避免折叠与拼块。
 
 ## 3. 工程结构
 

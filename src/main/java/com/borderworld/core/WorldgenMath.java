@@ -103,6 +103,49 @@ public final class WorldgenMath {
         return strength * (fraction - 0.5);
     }
 
+    /**
+     * 墙面阶跃 ∈ {0, 1}：沿 X / Z 各自的低频一维噪声取阈值。
+     *
+     * <p>这是"原版边境之墙"的现代做法：阈值一侧整片抬高一个档位，
+     * 于是墙体是<b>笔直的轴向长墙</b>（沿 X 或 Z 延伸），位置不规则、
+     * 高度只有一档——没有多层台阶、也没有渐变，越过墙就是整片高台。
+     */
+    public static double wallLevel(double x, double z) {
+        boolean liftX = valueNoise1D(x, 112.0, 0x9E3779B9) > 0.0;
+        boolean liftZ = valueNoise1D(z, 112.0, 0x85EBCA6B) > 0.0;
+        return liftX != liftZ ? 1.0 : 0.0;
+    }
+
+    /** 一维值噪声，返回 [-1,1]。 */
+    private static double valueNoise1D(double v, double scale, int seed) {
+        double f = v / scale;
+        int i0 = (int) Math.floor(f);
+        double t = smoothstep(f - i0);
+        return lerp(t, hash01(i0, 0, seed), hash01(i0 + 1, 0, seed));
+    }
+
+    /** 单八度 2D 值噪声，返回 [-1,1]。 */
+    private static double valueNoise(double x, double z, double scale, int seed) {
+        double fx = x / scale;
+        double fz = z / scale;
+        int x0 = (int) Math.floor(fx);
+        int z0 = (int) Math.floor(fz);
+        double tx = smoothstep(fx - x0);
+        double tz = smoothstep(fz - z0);
+        double v00 = hash01(x0, z0, seed);
+        double v10 = hash01(x0 + 1, z0, seed);
+        double v01 = hash01(x0, z0 + 1, seed);
+        double v11 = hash01(x0 + 1, z0 + 1, seed);
+        return lerp(tz, lerp(tx, v00, v10), lerp(tx, v01, v11));
+    }
+
+    private static double hash01(int x, int z, int seed) {
+        int h = x * 374761393 + z * 668265263 + seed;
+        h = (h ^ (h >>> 13)) * 1274126177;
+        h ^= h >>> 16;
+        return (h & 0x7FFFFFFF) / (double) 0x7FFFFFFF * 2.0 - 1.0;
+    }
+
     public static final double TWO_PI = Math.PI * 2.0;
 
     // ------------------------------------------------------------------

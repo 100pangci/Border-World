@@ -5,6 +5,7 @@
   "mixins": [
     "accessor.DensityFunctionTypesNoiseAccess",
     "accessor.DensityFunctionTypesShiftedNoiseAccess",
+    "accessor.DensityFunctionTypesYClampedGradientAccess",
     "accessor.InterpolatedNoiseSamplerAccess",
     "accessor.MultiNoiseSamplerAccess",
     "accessor.NoiseConfigAccess",

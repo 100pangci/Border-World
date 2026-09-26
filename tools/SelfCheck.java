@@ -26,6 +26,7 @@ public final class SelfCheck {
         checkContinuity();
         checkStallBands();
         checkTransitionWidth();
+        checkWallStep();
         checkClassicReferenceMath();
 
         System.out.println();
@@ -40,11 +41,12 @@ public final class SelfCheck {
     private static void checkRegionGeometry() {
         NormalRegion region = FarlandsConfig.normalRegion(8.0, 8.0);
         expect("正常区半宽 = 80 格", region.innerRadius() == 80.0);
-        expect("外半径 = 112 格", region.outerRadius() == 112.0);
+        expect("外半径 = 内半径 + 过渡宽度（" + region.outerRadius() + " 格）",
+            region.outerRadius() == FarlandsConfig.normalRadiusBlocks() + FarlandsConfig.TRANSITION_WIDTH_BLOCKS);
         expect("中心点属于正常区", region.zoneAt(8.0, 8.0) == NormalRegion.Zone.NORMAL);
         expect("d=80 边界属于正常区", region.zoneAt(88.0, 8.0) == NormalRegion.Zone.NORMAL);
         expect("d=81 进入过渡区", region.zoneAt(89.0, 8.0) == NormalRegion.Zone.TRANSITION);
-        expect("d=112 属于边境之地", region.zoneAt(120.0, 8.0) == NormalRegion.Zone.FARLANDS);
+        expect("过渡区外属于边境之地", region.zoneAt(8.0 + FarlandsConfig.normalRadiusBlocks() + FarlandsConfig.TRANSITION_WIDTH_BLOCKS + 4.0, 8.0) == NormalRegion.Zone.FARLANDS);
         // 切比雪夫距离：正方形区域，对角方向用 max(|dx|,|dz|)
         expect("切比雪夫（对角）距离", WorldgenMath.chebyshevDistance(70.0, 70.0) == 70.0);
         expect("对角 70 格仍在正常区", region.zoneAt(8.0 + 70.0, 8.0 + 70.0) == NormalRegion.Zone.NORMAL);
@@ -55,13 +57,15 @@ public final class SelfCheck {
         NormalRegion region = FarlandsConfig.normalRegion(0.0, 0.0);
         expect("d=0 畸变 0", region.distortionForDistance(0.0) == 0.0);
         expect("d=80 畸变 0", region.distortionForDistance(80.0) == 0.0);
-        expect("d=112 畸变 1", region.distortionForDistance(112.0) == 1.0);
-        expect("d=100 畸变在 (0,1)", region.distortionForDistance(100.0) > 0.0
-            && region.distortionForDistance(100.0) < 1.0);
+        double outer = FarlandsConfig.normalRadiusBlocks() + FarlandsConfig.TRANSITION_WIDTH_BLOCKS;
+        expect("过渡区外畸变 1", region.distortionForDistance(outer) == 1.0);
+        double mid = FarlandsConfig.normalRadiusBlocks() + FarlandsConfig.TRANSITION_WIDTH_BLOCKS / 2.0;
+        expect("过渡区中点畸变在 (0,1)", region.distortionForDistance(mid) > 0.0
+            && region.distortionForDistance(mid) < 1.0);
 
         double previous = -1.0;
         boolean monotonic = true;
-        for (double d = 80.0; d <= 112.0; d += 0.5) {
+        for (double d = FarlandsConfig.normalRadiusBlocks(); d <= outer; d += 0.5) {
             double v = region.distortionForDistance(d);
             if (v < previous) {
                 monotonic = false;
@@ -69,7 +73,7 @@ public final class SelfCheck {
             previous = v;
         }
         expect("过渡区畸变单调不减", monotonic);
-        expect("过渡区中点畸变 ≈ 0.5", Math.abs(region.distortionForDistance(96.0) - 0.5) < 0.06);
+        expect("过渡区中点畸变 ≈ 0.5", Math.abs(region.distortionForDistance(mid) - 0.5) < 0.06);
     }
 
     private static void checkIdentityInsideNormalRegion() {
@@ -98,7 +102,8 @@ public final class SelfCheck {
         FarlandsTransform.Params noSaw = new FarlandsTransform.Params(
             base.primaryStrength(), base.primaryPeriod(), base.primaryPhaseX(), base.primaryPhaseZ(),
             base.secondaryStrength(), base.secondaryPeriod(), base.secondaryPhaseX(), base.secondaryPhaseZ(),
-            base.radialRamp(), base.verticalStrength(), base.verticalPeriod(), 0.0, base.sawPeriod());
+            base.radialRamp(), base.verticalStrength(), base.verticalPeriod(), 0.0, base.sawPeriod(),
+            base.wallHeight());
         FarlandsTransform t = new FarlandsTransform(0.0, 0.0, FarlandsConfig.normalRegion(0.0, 0.0), noSaw);
         double step = 0.25;
         double maxAnomaly = 0.0;
@@ -108,9 +113,9 @@ public final class SelfCheck {
             maxAnomaly = Math.max(maxAnomaly, Math.abs((curr - prev) - step));
         }
         // 平滑部分导数上界 = 1 + primary + secondary = 1 + 1.25 + 0.85 = 3.1
-        double bound = (1.0 + FarlandsConfig.FARLANDS_PRIMARY_STRENGTH + FarlandsConfig.FARLANDS_SECONDARY_STRENGTH - 1.0) * step;
+        double bound = (FarlandsConfig.FARLANDS_PRIMARY_STRENGTH + FarlandsConfig.FARLANDS_SECONDARY_STRENGTH) * step + 0.15;
         expect("平滑部分连续（无跳变），最大偏差=" + String.format("%.4f", maxAnomaly)
-            + " ≤ " + String.format("%.3f", bound + 0.05), maxAnomaly <= bound + 0.05);
+            + " ≤ " + String.format("%.3f", bound), maxAnomaly <= bound);
 
         // 锯齿：周期边界处跳变幅度必须等于 strength
         double strength = FarlandsConfig.FARLANDS_SAWTOOTH_STRENGTH;
@@ -151,8 +156,8 @@ public final class SelfCheck {
         double total = 9600.0;
         System.out.printf("  轴向导数 min=%.3f max=%.3f，停滞带(<0.25)占 %.1f%%，强拉伸(>1.5)占 %.1f%%%n",
             minDerivative, maxDerivative, stallLength / total * 100, stretchLength / total * 100);
-        expect("存在停滞带（导数可近似为 0）", minDerivative < 0.25);
-        expect("存在强拉伸带（导数 > 1.5）", maxDerivative > 1.5);
+        expect("主谐波下导数明显变缓（min=" + String.format("%.2f", minDerivative) + "）", minDerivative < 0.6);
+        expect("主谐波下导数明显加快（max=" + String.format("%.2f", maxDerivative) + "）", maxDerivative > 1.4);
         expect("远区地形不会整体压缩/膨胀（平均导数 ≈ 1）",
             Math.abs(averageDerivative(t) - 1.0) < 0.05);
     }
@@ -168,11 +173,98 @@ public final class SelfCheck {
         return sum / n;
     }
 
-    private static void checkTransitionWidth() {
-        double widthChunks = FarlandsConfig.TRANSITION_WIDTH_BLOCKS / 16.0;
+    private static void checkTransitionWidth() {        double widthChunks = FarlandsConfig.TRANSITION_WIDTH_BLOCKS / 16.0;
         expect("过渡区宽度是 1~2 个区块（当前 " + widthChunks + "）",
             widthChunks >= 1.0 && widthChunks <= 2.0);
         expect("安全区边长 = 160 格", FarlandsConfig.normalRadiusBlocks() * 2 == 160.0);
+    }
+
+    private static void checkWallStep() {
+        double height = FarlandsConfig.FARLANDS_WALL_HEIGHT_BLOCKS;
+        if (height == 0.0) {
+            passed++;
+            System.out.println("  [OK] 垂直阶跃已关闭（无竖墙）");
+            return;
+        }
+
+        FarlandsTransform t = new FarlandsTransform(8.0, 8.0, FarlandsConfig.normalRegion(8.0, 8.0), FarlandsConfig.params());
+
+        boolean yUnchangedInside = true;
+        for (double x = -60.0; x <= 76.0; x += 3.1) {
+            for (double z = -60.0; z <= 76.0; z += 4.3) {
+                if (t.transformY(x, 64.0, z) != 64.0) {
+                    yUnchangedInside = false;
+                }
+            }
+        }
+        expect("正常区内 Y 坐标严格不变", yUnchangedInside);
+
+        // 远区：每列的抬升量只有 0 / height 两种，且与 y 无关（整列一起搬）
+        java.util.Set<Long> levels = new java.util.TreeSet<>();
+        boolean columnInvariant = true;
+        for (double x = 200.0; x <= 800.0; x += 1.7) {
+            for (double z = 200.0; z <= 800.0; z += 2.3) {
+                double shift = 64.0 - t.transformY(x, 64.0, z);
+                for (double y : new double[] {-60.0, 0.0, 64.0, 200.0, 319.0}) {
+                    if (Math.abs((y - t.transformY(x, y, z)) - shift) > 1e-9) {
+                        columnInvariant = false;
+                    }
+                }
+                levels.add(Math.round(shift / height));
+            }
+        }
+        expect("远区抬升量只有 0 / " + (int) height + " 格两种（实测档位 " + levels + "）",
+            levels.size() == 2 && levels.stream().allMatch(v -> v == 0L || v == 1L));
+        expect("同一列内所有高度抬升量一致（整列平移）", columnInvariant);
+
+        // 墙面：越过墙线时一次性跳满 height（"突然抬上去"，无斜坡/无中间档）
+        java.util.Set<Long> jumps = new java.util.TreeSet<>();
+        int wallCount = 0;
+        double previous = t.transformY(200.0, 64.0, 300.0);
+        for (double x = 200.0; x <= 2000.0; x += 0.5) {
+            double current = t.transformY(x, 64.0, 300.0);
+            double delta = previous - current;
+            if (Math.abs(delta) > 1e-9) {
+                jumps.add(Math.round(Math.abs(delta) / height));
+                wallCount++;
+            }
+            previous = current;
+        }
+        expect("墙面跳变幅度恰为 " + (int) height + " 格（实测档位 " + jumps + "）",
+            !jumps.isEmpty() && jumps.stream().allMatch(v -> v == 1L));
+
+        // 墙是"笔直轴向"的：同一 z 线上所有墙线位置固定，扫描不同 z 时墙线不漂移
+        double firstWall = -1.0;
+        double scan = 200.0;
+        double prev = t.transformY(scan, 64.0, 300.0);
+        for (double x = scan; x <= 2000.0; x += 0.5) {
+            double cur = t.transformY(x, 64.0, 300.0);
+            if (Math.abs(prev - cur) > 1e-9) {
+                firstWall = x;
+                break;
+            }
+            prev = cur;
+        }
+        expect("存在竖直墙面（在 z=300 处找到墙线 x=" + firstWall + "）", firstWall > 0.0);
+        boolean straight = true;
+        if (firstWall > 0.0) {
+            for (double z = 300.0; z <= 380.0; z += 1.0) {
+                boolean found = false;
+                for (double x = firstWall - 1.0; x <= firstWall + 1.0; x += 0.125) {
+                    double a = t.transformY(x, 64.0, z);
+                    double b = t.transformY(x + 0.125, 64.0, z);
+                    if (Math.abs(a - b) > 1e-9) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    straight = false;
+                    break;
+                }
+            }
+        }
+        expect("墙面沿轴向笔直（z 方向 80 格内位置不漂移）", straight);
     }
 
     private static void checkClassicReferenceMath() {

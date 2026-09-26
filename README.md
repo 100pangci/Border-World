@@ -9,31 +9,36 @@ Fabric 1.21.1 / Java 21 Mod：**世界以实际出生点为中心保留一小块
 | 区域 | 范围（以出生区块中心为原点，切比雪夫距离） | 行为 |
 | --- | --- | --- |
 | 正常区 | ≤ 80 格（10×10 chunks = 160×160） | 与 Vanilla **逐位一致** |
-| 过渡区 | 80 → 112 格（2 chunks 宽） | 畸变系数 smoothstep 连续 0 → 1 |
-| 边境之地 | ≥ 112 格 | 完整畸变，无限延伸 |
+| 过渡区 | 80 → 96 格（1 chunk 宽） | 畸变系数 smoothstep 连续 0 → 1 |
+| 边境之地 | ≥ 96 格 | 完整畸变，无限延伸 |
 
-畸变方式不是预制墙体或结构拼接，而是把**进入噪声的世界坐标**做一次有界调制 + 一次可控断层：
+畸变方式不是预制墙体或结构拼接，而是把**进入噪声的世界坐标**做一次有界水平调制，
+再把**整条竖直剖面**按轴向阶跃平移：
 
 ```text
-v(u) = u + Σ strengthᵢ · (periodᵢ / 2π) · sin(2π·u/periodᵢ + phaseᵢ) + ramp·u
-         + sawStrength · (frac(u / sawPeriod) − 0.5)
-v'(u) = 1 + Σ strengthᵢ · cos(...) + ramp        （锯齿段内为 + sawStrength/sawPeriod）
+水平： v(u) = u + Σ strengthᵢ · (periodᵢ / 2π) · sin(2π·u/periodᵢ + phaseᵢ) + ramp·u
+
+垂直： lift(x,z) = α(x,z) · wallHeight · wallLevel(x,z)     ∈ {0, wallHeight}
+       wallLevel(x,z) = (nX(x) > 0) XOR (nZ(z) > 0)       // 两个轴向 1D 值噪声（lattice 112）
+       y' = y − lift(x,z)                                 // 在更低处取样 = 该列地形整体抬高
 ```
 
-- 导数为 0 的位置即"停滞带"：地形沿该轴被挤出成平台/长隧道；
-- `strength > 1` 时导数转负 → **折叠/镜像重复地形**；
-- **锯齿项**每 `sawPeriod` 格产生一次 `sawStrength` 格的坐标跳变 → 一条竖直断层（"巨墙"），
-  这是让远区一眼就像经典 Far Lands 的关键；跳变线是坐标的纯函数，与区块边界无关；
-- 两个水平轴各自独立调制，叠加形成方格状地形；
-- 数学全部有界（除刻意设置的断层线），因此原版 spline / rangeChoice / squeeze /
-  含水层 / 洞穴管线全部照常工作，biome、洞穴、矿物、结构继续沿原版体系生成。
+- `α(x,z)` 是过渡区的 smoothstep 畸变系数：正常区 0 → 边境之地 1；
+- **垂直阶跃就是"边境之墙"**：`wallLevel` 只取 0/1，越过墙线的瞬间抬升量从 0 跳到
+  `wallHeight`（默认 30 格），得到 **1 格宽的笔直垂直断面**——不是斜坡、不分档；
+- 抬升是**整条剖面一起搬**（所有噪声叶子 **+** 原版 `y_clamped_gradient` 深度梯度/滑移项），
+  所以墙两侧高度差恒等于 `wallHeight`，与当地地形起伏无关；墙那边就是一块整体抬高
+  30 格的正常地形，洞穴、含水层、biome 一起跟过去；
+- 墙线是两个轴向 1D 值噪声的零交叉线，因此是**笔直、轴向、可持续数百格**的长墙；
+- 水平调制有界（默认强度 0.5 < 1，导数 ∈ [0.5, 1.5]），只做轻度搬运，不产生折叠/碎片；
+  正常区内一切都返回原坐标，与原版逐位一致。
 
 当前默认参数（`config/FarlandsConfig.java`）：
 
 ```text
-正常区 10×10 chunks（160×160 格） / 过渡区 32 格
-主谐波 1.25 @ 64 格（折叠）  +  次谐波 0.85 @ 320 格（打乱 biome/地形格局）
-锯齿 320 格 @ 160 格（断层巨墙）  +  垂直畸变 0.5 @ 64 格（水平板块）
+正常区 10×10 chunks（160×160 格） / 过渡区 16 格
+主谐波 0.5 @ 128 格（轻度水平搬运）  +  次谐波 0（关闭）
+垂直阶跃墙 30 格（wallLevel 0/1 阶跃，突然抬升）  +  锯齿 0（关闭）
 ```
 
 历史成因分析（12,550,824 那个数字怎么来的）与设计取舍见 [`docs/DESIGN.md`](docs/DESIGN.md)。
@@ -48,6 +53,11 @@ v'(u) = 1 + Σ strengthᵢ · cos(...) + ramp        （锯齿段内为 + sawStr
 | `InterpolatedNoiseSampler`（`base_3d_noise`） | 地形基础 3D 噪声（经典 Far Lands 的直系噪声，171.103/格） |
 | `DensityFunctionTypes$Noise` | 含水层、洞穴、矿脉、jagged 等全部普通噪声 |
 | `DensityFunctionTypes$ShiftedNoise` | 温度/湿度/大陆性/侵蚀/深度/怪异度 → biome 与地形共享同一畸变空间 |
+| `DensityFunctionTypes$YClampedGradient` | 深度梯度 + 地表滑移项（**竖直剖面**）→ 垂直阶跃墙能真正抬起地形 |
+
+**为什么必须连 `y_clamped_gradient` 一起包装**：地表高度是密度函数的零点。
+只搬噪声叶子时，未变换的深度梯度会把零点拽回原位（实测 36 格阶跃只抬起来约 12 格，
+而且被抹成斜坡）；把剖面函数一起搬之后，实测抬升量精确等于 `wallHeight`。
 
 同时把 `NoiseConfig` 的 `MultiNoiseSampler` 六个气候字段就地替换（不重建对象，
 以兼容 Fabric API 注入的 seed 字段），保证"查询到的 biome"与"生成出来的 biome"一致。
@@ -159,11 +169,12 @@ java -Xmx2G -jar ~/.gradle/caches/fabric-loom/1.21.1/minecraft-server.jar --nogu
 
 | 参数 | 默认 | 作用 |
 | --- | --- | --- |
-| `FARLANDS_PRIMARY_STRENGTH/PERIOD` | 1.25 / 64 | 主谐波：>1 产生折叠/镜像重复 |
-| `FARLANDS_SECONDARY_STRENGTH/PERIOD` | 0.85 / 320 | 长周期大振幅：打乱 biome/地形格局 |
-| `FARLANDS_SAWTOOTH_STRENGTH/PERIOD` | 320 / 160 | 锯齿断层：每 160 格一条"巨墙"（0=关闭） |
-| `VERTICAL_WARP_STRENGTH/PERIOD` | 0.5 / 64 | 垂直畸变：水平板块/竖向断层 |
-| `TRANSITION_WIDTH_BLOCKS` | 32 | 过渡区宽度（1~2 区块） |
+| `FARLANDS_WALL_HEIGHT_BLOCKS` | 30 | **边境之墙**：远区整列抬升的格数，0=关闭（"突然抬上去"的唯一来源） |
+| `FARLANDS_PRIMARY_STRENGTH/PERIOD` | 0.5 / 128 | 主谐波：轻度水平搬运（>1 会产生折叠/碎片） |
+| `FARLANDS_SECONDARY_STRENGTH/PERIOD` | 0 / 320 | 次谐波：默认关闭（打乱 biome/地形格局，属"过度"） |
+| `FARLANDS_SAWTOOTH_STRENGTH/PERIOD` | 0 / 128 | 锯齿断层：水平位移断层，平坦地带看不出、又易碎片化，默认关闭 |
+| `VERTICAL_WARP_STRENGTH/PERIOD` | 0 / 64 | 平滑垂直畸变，默认关闭 |
+| `TRANSITION_WIDTH_BLOCKS` | 16 | 过渡区宽度（1 区块） |
 | `NORMAL_REGION_CHUNKS` | 10 | 正常区边长（10×10 chunks） |
 
 `tools/tune_warp.py` 用"原版高度场 + 坐标映射"的数值代理快速比较候选参数
