@@ -23,7 +23,15 @@ Fabric 1.21.1 / Java 21 Mod：**世界以实际出生点为中心保留一小块
     sampledY = base + mod(y − lift − base, STACK_PERIOD)      // base=24, PERIOD=72
     → 同一段地形（草皮/土/石/洞穴）沿高度一层层重复堆叠，层间露出横切面与空隙
 
-③ 层间错位 —— 切片抬升（X 40@96 + Z 28@48）+ 小尺度混沌 20 格
+③ 角落（Corner Far Lands）—— 两轴同时溢出时，旧版结构只取决于两轴超出量的**比值**
+    （Wiki: consistent when the ratio ... is kept the same），因此层理是从角落放射出的
+    近完美斜线、层厚随方向变化（layers "fusing together and splitting"）：
+    ratio  = uX / (uX + uZ)，uX/uZ = 各轴超出安全区的距离
+    层相位 = CORNER_DIAGONAL·(ratio−0.5)·2      // 斜向层理
+    层厚   = STACK_PERIOD·(1 + SWING·(ratio−0.5))  // 融合/分裂
+    （取绝对值 → 四个象限天然镜像，与 Wiki 记载一致）
+
+④ 层间错位 —— 切片抬升（X 40@96 + Z 28@48）+ 小尺度混沌 20 格
     → 每层的边界不齐、表面参差，不是"一张平板"
 ```
 
@@ -169,6 +177,8 @@ java -Xmx2G -jar ~/.gradle/caches/fabric-loom/1.21.1/minecraft-server.jar --nogu
 | 参数 | 默认 | 作用 |
 | --- | --- | --- |
 | `FARLANDS_STACK_PERIOD` | 72 | **层叠周期**：一层地形多厚（越小层越多；经典 5~7 层） |
+| `FARLANDS_CORNER_DIAGONAL` | 40 | **角落斜线**：层理相位随两轴溢出比值的倾斜量 |
+| `FARLANDS_CORNER_PERIOD_SWING` | 0.35 | **角落层厚摆幅**：层的融合/分裂程度 |
 | `FARLANDS_VERTICAL_PIVOT` | 24 | 层底高度（层叠与放大的基准） |
 | `FARLANDS_SLAB_STEP_X/LATTICE_X` | 40 @ 96 | 沿 X 的台阶：层间错位 |
 | `FARLANDS_SLAB_STEP_Z/LATTICE_Z` | 28 @ 48 | 沿 Z 的台阶：层间错位 |

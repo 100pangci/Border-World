@@ -50,7 +50,9 @@ public final class FarlandsTransform {
         double verticalPivot,
         double warp3dStrength,
         double warp3dScale,
-        double stackPeriod
+        double stackPeriod,
+        double cornerDiagonal,
+        double cornerPeriodSwing
     ) {
         public boolean hasVerticalWarp() {
             return this.verticalStrength != 0.0 && this.verticalPeriod != 0.0;
@@ -84,7 +86,7 @@ public final class FarlandsTransform {
     }
 
     private static Params defaultParams() {
-        return new Params(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1, 0.0, 1.0, 0.0, 1.0, 1.0, 64.0, 0.0, 56.0, 0.0);
+        return new Params(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1, 0.0, 1.0, 0.0, 1.0, 1.0, 64.0, 0.0, 56.0, 0.0, 0.0, 0.0);
     }
 
     public boolean isIdentity() {
@@ -278,8 +280,16 @@ public final class FarlandsTransform {
             //   同一段地形沿 Y 一层层重复堆叠（Wiki：layers of terrain stack on top of
             //   another repeatedly until it reaches the height limit）
             double base = this.params.verticalPivot();
-            double rel = sampledY - base;
-            sampledY = base + rel - Math.floor(rel / this.params.stackPeriod()) * this.params.stackPeriod();
+            // ★ 角落（Corner Far Lands，两轴同时溢出）：
+            //   旧版结构只取决于"两轴超出量的比值"（Wiki: consistent when the ratio ... is kept
+            //   the same），因此层理是从角落放射出去的直线；层厚也随方向变化，
+            //   表现为 Wiki 说的 layers "fusing together and splitting every so often"。
+            double ratio = cornerRatio(x, z);
+            double swing = 1.0 + this.params.cornerPeriodSwing() * (ratio - 0.5);
+            double period = this.params.stackPeriod() * swing;
+            double phase = this.params.cornerDiagonal() * (ratio - 0.5) * 2.0;
+            double rel = sampledY - base + phase;
+            sampledY = base + rel - Math.floor(rel / period) * period;
         }
         if (this.params.warp3dStrength() != 0.0) {
             // 3D 噪声位移：把采样高度整片搅乱 → 实心石体里从顶到底全是虚实相间的孔洞
@@ -308,6 +318,26 @@ public final class FarlandsTransform {
     // ------------------------------------------------------------------
     // 内部
     // ------------------------------------------------------------------
+
+    /**
+     * 角落比值 ∈ [0,1]：两轴"超出安全区的距离"之比。
+     *
+     * <p>旧版 Corner Far Lands 的地形只取决于这个比值（沿从角落射出的直线恒定），
+     * 因此层理会呈放射状斜线；四个象限因取绝对值而天然镜像（Wiki 亦如此记载）。
+     */
+    public double cornerRatio(double x, double z) {
+        double limit = this.region.innerRadius();
+        double ux = Math.abs(x - this.centerX) - limit;
+        double uz = Math.abs(z - this.centerZ) - limit;
+        if (ux < 0.0) {
+            ux = 0.0;
+        }
+        if (uz < 0.0) {
+            uz = 0.0;
+        }
+        double sum = ux + uz;
+        return sum <= 1e-9 ? 0.5 : ux / sum;
+    }
 
     /** 把坐标钉死在中心 ±limit 以内（对应旧版噪声坐标的 int 饱和）。 */
     private static double pin(double value, double center, double limit) {

@@ -143,6 +143,24 @@ public final class FarlandsConfig {
      */
     public static final double FARLANDS_STACK_PERIOD = 72.0;
 
+    /**
+     * 角落（Corner Far Lands）斜线幅度（格）：层理相位随"两轴溢出量比值"倾斜的量。
+     *
+     * <p>旧版角落区的结构只取决于两轴超出量之比，因此层理是从角落放射出去的
+     * 近完美斜线（Wiki: near-perfect diagonal lines ... all intersect at the corner）。
+     * 0 = 关闭；建议 24~48。
+     */
+    public static final double FARLANDS_CORNER_DIAGONAL = 40.0;
+
+    /**
+     * 角落层厚摆幅：层厚随比值在 {@code 1 ± SWING/2} 之间变化。
+     *
+     * <p>对应 Wiki 所说 Corner Far Lands 的层会 "fusing together and splitting
+     * every so often"（层与层时而融合、时而分裂）。
+     * 0 = 关闭；建议 0.2~0.5。
+     */
+    public static final double FARLANDS_CORNER_PERIOD_SWING = 0.35;
+
     /** 3D 噪声位移的尺度（格）：决定孔洞的尺度。 */
     public static final double FARLANDS_WARP3D_SCALE = 56.0;
 
@@ -235,7 +253,9 @@ public final class FarlandsConfig {
             FARLANDS_VERTICAL_PIVOT,
             FARLANDS_WARP3D_STRENGTH,
             FARLANDS_WARP3D_SCALE,
-            FARLANDS_STACK_PERIOD
+            FARLANDS_STACK_PERIOD,
+            FARLANDS_CORNER_DIAGONAL,
+            FARLANDS_CORNER_PERIOD_SWING
         );
     }
 

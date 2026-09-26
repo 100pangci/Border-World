@@ -109,7 +109,13 @@ alpha = smoothstep(clamp((d - R0)/W, 0, 1))     // C¹ 连续
    sampledY = base + mod(y − lift − base, STACK_PERIOD)      base=24, PERIOD=72
    → 同一段地形剖面沿高度重复堆叠，层间露出横切面与空隙
 
-③ 层间错位与参差
+③ 角落（Corner Far Lands）
+   两轴同时溢出时，旧版结构只取决于两轴"超出量"的比值（沿角落射线的直线恒定）
+   → 层理相位 CORNER_DIAGONAL·(ratio−0.5)·2 倾斜（放射状斜线）；
+     层厚 STACK_PERIOD·(1 + SWING·(ratio−0.5)) 随方向变化（层融合/分裂）；
+     取绝对值 → 象限镜像（与 Wiki 记载一致）
+
+④ 层间错位与参差
    切片抬升（slabLevel 量化值噪声，X 40@96 + Z 28@48）+ 混沌（chaosLift，20 格）
 ```
 
