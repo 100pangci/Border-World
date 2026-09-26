@@ -12,34 +12,32 @@ Fabric 1.21.1 / Java 21 Mod：**世界以实际出生点为中心保留一小块
 | 过渡区 | 80 → 96 格（1 chunk 宽） | 畸变系数 smoothstep 连续 0 → 1 |
 | 边境之地 | ≥ 96 格 | 完整畸变，无限延伸 |
 
-畸变方式不是预制墙体或结构拼接，而是把**原地形整体"切片"再逐片抬升**，
-外加一层竖直分层锯齿：
+实现照旧版机制（Minecraft Wiki *Far Lands/Cause*）：
 
 ```text
-切片抬升： lift(x,z,y) = levelX(x+leanX(y))·STEP_X + levelZ(z+leanZ(y))·STEP_Z
-           level ∈ {0,1,2,3}（每轴一维值噪声量化成 4 档）
-           y' = y − lift                    // 采样点下移 = 该片地形整体抬高
-分层锯齿： y' += SAW · (frac((y+phase(x,z))/SAW_PERIOD) − 0.5)   // 强度 > 周期 ⇒ 折回
+① 坐标钉死 —— 旧版噪声坐标转 int 会饱和（索引钉死在 ±2^31），该轴上噪声不再变化
+    采样 x/z 超出安全区后被夹在边界 → 沿轴无限延伸的笔直隧道
+
+② 高度层叠 —— 旧版 Corner Far Lands 的 "stack"：
+    layers of terrain stack on top of another repeatedly until it reaches the height limit
+    sampledY = base + mod(y − lift − base, STACK_PERIOD)      // base=24, PERIOD=72
+    → 同一段地形（草皮/土/石/洞穴）沿高度一层层重复堆叠，层间露出横切面与空隙
+
+③ 层间错位 —— 切片抬升（X 40@96 + Z 28@48）+ 小尺度混沌 20 格
+    → 每层的边界不齐、表面参差，不是"一张平板"
 ```
 
-- **片内仍是原来的地形**（草、土、沙、石头、甚至树都在），只是整体挪了一个高度；
-- **片与片之间是竖直断面**（沿 Z 每 ~56 格一道细壁、沿 X 每 ~160 格一道粗台阶），
-  最高几片（抬升 250+ 格）会顶到建造上限 y=320 被切平 —— 就是"看不到顶的墙"；
-- **分层锯齿折回**（强度 104 > 周期 72）→ 同一列出现多个"地表" → 石壁里的
-  **夹层、镂空、拱洞** —— 老版本边境之地最标志性的外观；
-- **分层横向错位**（`layerShift`）：每 48 格高度为一层，每层把地形整体左右挪开（随机
-  0~64 格）→ 层与层错缝堆叠、露出不同层理，这就是"边境之地那种错位感"；
-- 切片边界随高度摆动（`lean`）+ 随高度倾斜的剪切（`shear`）→ 崖面参差、有悬挑；
-- 正常区内一切返回原坐标，与原版逐位一致。
+- 安全区（`α = 0`）内三段全部短路，逐位等于原版；
+- 出安全区 16 格过渡带内 `α` 连续 0→1，边界处是旧版那种突然出现的层叠石壁；
+- 层叠让地形从世界底一直堆到建造上限（旧版正是"堆到高度上限"）。
 
 当前默认参数（`config/FarlandsConfig.java`）：
 
 ```text
 正常区 10×10 chunks（160×160 格） / 过渡区 16 格
-切片：X 56 格 @160 格（4 档） + Z 40 格 @56 格（4 档）   → 抬升 0..288 格，最高顶到建造上限
-分层锯齿：112 格 @64 格（折回 → 夹层/镂空） + 剪切 48 格 @96 格
-分层横向错位：64 格 @48 格高度（每层左右挪开 → 错缝/错位感）
-水平：主谐波 0.5 @128 格（轻度搬运）  +  次谐波 0（关闭）
+层叠：周期 72 格、层底 y=24        → 5 层左右，层厚 = 地形剖面 + 空隙
+钉死：安全区半径 80 格外坐标冻结     → 沿轴无限隧道
+错位：切片抬升 X 40@96 + Z 28@48、混沌 20 格
 ```
 
 历史成因分析（12,550,824 那个数字怎么来的）与设计取舍见 [`docs/DESIGN.md`](docs/DESIGN.md)。
@@ -170,11 +168,13 @@ java -Xmx2G -jar ~/.gradle/caches/fabric-loom/1.21.1/minecraft-server.jar --nogu
 
 | 参数 | 默认 | 作用 |
 | --- | --- | --- |
-| `FARLANDS_SLAB_STEP_X/LATTICE_X` | 56 @ 160 | 沿 X 的粗台阶：每 160 格一片，片间错开 56 格 |
-| `FARLANDS_SLAB_STEP_Z/LATTICE_Z` | 40 @ 56 | 沿 Z 的细切片：每 56 格一道竖壁，错开 40 格 |
-| `FARLANDS_SLAB_LEVELS` | 4 | 每轴档数：抬升量 = 档位 × STEP（最高 3×56+3×40 = 288 格） |
-| `VERTICAL_WARP_STRENGTH/PERIOD` | 104 @ 72 | 竖直分层锯齿（强度>周期 ⇒ 折回）：夹层/镂空/拱洞 |
-| `FARLANDS_SHEAR_STRENGTH/PERIOD` | 48 @ 96 | 随高度倾斜的剪切：悬挑/倾斜层理 |
+| `FARLANDS_STACK_PERIOD` | 72 | **层叠周期**：一层地形多厚（越小层越多；经典 5~7 层） |
+| `FARLANDS_VERTICAL_PIVOT` | 24 | 层底高度（层叠与放大的基准） |
+| `FARLANDS_SLAB_STEP_X/LATTICE_X` | 40 @ 96 | 沿 X 的台阶：层间错位 |
+| `FARLANDS_SLAB_STEP_Z/LATTICE_Z` | 28 @ 48 | 沿 Z 的台阶：层间错位 |
+| `CHAOS_RANGE` | 20 | 小尺度起伏：打散光滑面 |
+| `VERTICAL_WARP_STRENGTH/PERIOD` | 0 @ 64 | 竖直折回（层叠的补充手段，默认关） |
+| `FARLANDS_WARP3D_STRENGTH/SCALE` | 0 @ 56 | 3D 噪声位移（用于"深处也打洞"，默认关） |
 | `FARLANDS_LAYER_SHIFT_STRENGTH/PERIOD` | 64 @ 48 | **分层横向错位**：每 48 格高度一层，每层左右挪开（0~64 格）→ 错缝感 |
 | `FARLANDS_PRIMARY_STRENGTH/PERIOD` | 0.5 / 128 | 主谐波：轻度水平搬运（>1 会产生折叠/碎片） |
 | `FARLANDS_SECONDARY_STRENGTH/PERIOD` | 0 / 320 | 次谐波：默认关闭 |

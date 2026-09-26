@@ -45,6 +45,25 @@ python3 tools/slice_render.py --dir run/server --world world-demo8 \
     --axis x --fixed 0 --from 88 --to 290 --y-min 40 --y-max 320 --out /tmp/opencode/slice.png
 ```
 
+## 最终形态：坐标钉死 + 高度层叠（2026-09-26 定稿，用户确认"完美"）
+
+对照 Minecraft Wiki《Far Lands/Cause》实现旧版机制，剖面渲染
+（`tools/slice_render.py`）可见 4~5 层地形重复堆叠、层间横切面与空隙、草顶完整。
+
+```text
+[OK] 正常区内变换严格恒等（逐位）
+[OK] 安全区外采样坐标钉死 → 该轴噪声不变
+[OK] 竖直采样按 STACK_PERIOD 折返 → 层叠
+[OK] 自检 42 项全过
+```
+
+复现：
+
+```bash
+python3 tools/slice_render.py --dir run/server --world world-stack \
+    --axis x --fixed 0 --from 88 --to 290 --y-min -64 --y-max 320 --out /tmp/opencode/stack.png
+```
+
 ## 阶段状态
 
 | 阶段 | 内容 | 状态 | 结论/证据 |
