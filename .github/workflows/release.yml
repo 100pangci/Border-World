@@ -1,0 +1,59 @@
+name: Release
+
+# 打 tag（如 v1.0）自动构建并发布 Release；也可以在 Actions 页面手动触发（仅构建产物）。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build (fabric-loom remapJar)
+        run: ./gradlew build --no-daemon -Dorg.gradle.jvmargs="-Xmx2G -XX:MaxMetaspaceSize=512m"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: borderworld-jar
+          path: |
+            build/libs/*.jar
+          if-no-files-found: error
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Border World ${{ github.ref_name }}
+          files: build/libs/*.jar
+          generate_release_notes: true
+          body: |
+            ## Border World ${{ github.ref_name }}
+
+            Fabric 1.21.1 / Java 21：以实际出生点为中心保留 10×10 区块原版正常区，
+            之外按 Beta 1.7.3 的旧版机制复现边境之地（地形层叠 + 每层横向错位 + 海平面灌水）。
+
+            **安装**：把 `borderworld-*.jar` 放进 `.minecraft/mods/`，
+            并确保已安装 Fabric Loader 0.19.5+ 与 Fabric API（1.21.1）。
+
+            **玩法**：进游戏后出生点周围是原版安全区，向外走约 100 格即可看到层叠石壁；
+            `/tp 200 130 200` 可直达"角落区"（两轴同时溢出的斜向层理）。
+
+            机制与参数说明见 [README](https://github.com/${{ github.repository }}#readme)。

@@ -115,7 +115,7 @@ public final class FarlandsConfig {
     public static final double FARLANDS_SLAB_STEP_Z = 28.0;
     public static final double FARLANDS_SLAB_LATTICE_Z = 48.0;
 
-    /** 每轴切片档数：抬升量 = 档位(0..n-1) × STEP。4 档 ⇒ 最高约 3×56+3×40 = 288 格（地表正好顶到建造上限）。 */
+    /** 每轴切片档数：抬升量 = 档位(0..n-1) × STEP。4 档 ⇒ 最高 3×40+3×28 = 204 格（配合层叠堆到建造上限）。 */
     public static final int FARLANDS_SLAB_LEVELS = 4;
 
     /** 小尺度起伏的幅度上限（格）：墙面/台面被揉碎的程度（见 WorldgenMath#chaosLift）。 */

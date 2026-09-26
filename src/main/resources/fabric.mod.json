@@ -3,11 +3,11 @@
   "id": "borderworld",
   "version": "${version}",
   "name": "Border World",
-  "description": "Spawn-anchored normal region surrounded by an infinite Far Lands anomaly, implemented by warping worldgen noise coordinates.",
+  "description": "A vanilla-exact 10x10-chunk region anchored to the spawn chunk center, surrounded by an infinite Far Lands anomaly rebuilt in the modern density-function pipeline (layered terrain stacking, per-layer lateral offsets, sea-level flooding).",
   "authors": [
     "ywpc"
   ],
-  "license": "MIT",
+  "license": "MPL-2.0",
   "environment": "*",
   "entrypoints": {
     "main": [
