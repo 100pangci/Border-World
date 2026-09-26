@@ -124,6 +124,19 @@ public final class FarlandsConfig {
      */
     public static final double FARLANDS_VERTICAL_AMPLIFY = 1.0;
 
+    /**
+     * 3D 噪声位移强度（格）：把"采样高度"按 3D 噪声整片位移。
+     *
+     * <p>这是让<b>深处也出现孔洞</b>的关键：只做折回时，深处无论怎么折都还是石头；
+     * 位移幅度大于"本地表到世界底"的距离后，从顶到底都会出现虚实相间的瑞士奶酪孔洞
+     * （旧版边境之地正是这样——"Swiss Cheese Wall 一直延伸到地图底部"）。
+     * 0 = 关闭；建议 200~300。
+     */
+    public static final double FARLANDS_WARP3D_STRENGTH = 256.0;
+
+    /** 3D 噪声位移的尺度（格）：决定孔洞的尺度。 */
+    public static final double FARLANDS_WARP3D_SCALE = 56.0;
+
     /** 竖直放大的基准高度（格）：一般取海平面，地形在此高度上下被放大。 */
     public static final double FARLANDS_VERTICAL_PIVOT = 64.0;
 
@@ -210,7 +223,9 @@ public final class FarlandsConfig {
             FARLANDS_LAYER_SHIFT_STRENGTH,
             FARLANDS_LAYER_SHIFT_PERIOD,
             FARLANDS_VERTICAL_AMPLIFY,
-            FARLANDS_VERTICAL_PIVOT
+            FARLANDS_VERTICAL_PIVOT,
+            FARLANDS_WARP3D_STRENGTH,
+            FARLANDS_WARP3D_SCALE
         );
     }
 

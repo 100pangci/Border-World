@@ -47,7 +47,9 @@ public final class FarlandsTransform {
         double layerShiftStrength,
         double layerShiftPeriod,
         double verticalAmplify,
-        double verticalPivot
+        double verticalPivot,
+        double warp3dStrength,
+        double warp3dScale
     ) {
         public boolean hasVerticalWarp() {
             return this.verticalStrength != 0.0 && this.verticalPeriod != 0.0;
@@ -81,7 +83,7 @@ public final class FarlandsTransform {
     }
 
     private static Params defaultParams() {
-        return new Params(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1, 0.0, 1.0, 0.0, 1.0, 1.0, 64.0);
+        return new Params(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1, 0.0, 1.0, 0.0, 1.0, 1.0, 64.0, 0.0, 56.0);
     }
 
     public boolean isIdentity() {
@@ -269,6 +271,14 @@ public final class FarlandsTransform {
             // 竖直分层锯齿：产生夹层 / 镂空 / 悬空石板（老版本边境之地的外观特征）
             sampledY += WorldgenMath.layerWarp(
                 y, this.params.verticalStrength(), this.params.verticalPeriod(), WorldgenMath.layerPhase(x, z));
+        }
+        if (this.params.warp3dStrength() != 0.0) {
+            // 3D 噪声位移：把采样高度整片搅乱 → 实心石体里从顶到底全是虚实相间的孔洞
+            // （用"钉死"的 x/z 采样：孔洞图案沿溢出轴不变 = 老版本的隧道感）
+            int ox = overflowX(x);
+            int oz = overflowZ(z);
+            sampledY += this.params.warp3dStrength()
+                * WorldgenMath.spongeNoise(ox, y, oz, this.params.warp3dScale(), 0x9E3779B9);
         }
         return sampledY;
     }
