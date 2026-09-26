@@ -1,208 +1,181 @@
 # Border World
 
-Fabric 1.21.1 / Java 21 Mod：**世界以实际出生点为中心保留一小块完全原版的正常区域，之外通过扭曲世界生成噪声坐标，让地形连续地"坠入"边境之地（Far Lands）。**
+![边境之地效果展示](docs/img/farlands-showcase.jpg)
 
-> 玩家出生在世界仅剩的一小块正常区域，越过约 160×160 格的安全区后，整个无限世界逐渐坠入边境之地。
+> 以**实际出生点**为中心保留一块完全原版的正常区，之外**按 Beta 1.7.3 的旧版机制复现边境之地（Far Lands）**：
+> 地形被切成一层层"带草顶的地皮"，层与层横向错开、层间灌满海水，最高的几层一直堆到建造上限。
 
-## 效果与原理
+Fabric 1.21.1 · Java 21 · 客户端/服务端通用
 
-| 区域 | 范围（以出生区块中心为原点，切比雪夫距离） | 行为 |
+---
+
+## 这是什么
+
+一块"正常世界的孤岛"：出生点周围 10×10 区块（160×160 格）内**与原版逐位一致**（含矿物、洞穴、结构、生物群系），
+越出安全区 16 格过渡带后，世界开始变成旧版那种**层叠错位的边境之地**，一直延伸到无穷远。
+
+适合：想看现代版本里"真正像旧版"的边境之地，又不想丢掉出生点那块正常基地。
+
+---
+
+## 效果
+
+| 区域 | 范围（以出生区块中心为起点，切比雪夫距离） | 行为 |
 | --- | --- | --- |
-| 正常区 | ≤ 80 格（10×10 chunks = 160×160） | 与 Vanilla **逐位一致** |
-| 过渡区 | 80 → 96 格（1 chunk 宽） | 畸变系数 smoothstep 连续 0 → 1 |
-| 边境之地 | ≥ 96 格 | 完整畸变，无限延伸 |
+| 正常区 | ≤ 80 格（10×10 区块） | 与 Vanilla **逐位一致** |
+| 过渡带 | 80 → 96 格（1 区块） | 畸变系数平滑 0 → 1 |
+| 边境之地 | ≥ 96 格 | 旧版机制：层叠 + 错位 + 灌水，直到建造上限 |
 
-实现照旧版机制（Minecraft Wiki *Far Lands/Cause*）：
+---
 
-```text
-① 坐标钉死 —— 旧版噪声坐标转 int 会饱和（索引钉死在 ±2^31），该轴上噪声不再变化
-    采样 x/z 超出安全区后被夹在边界 → 沿轴无限延伸的笔直隧道
+## 还原了旧版的哪些机制
 
-② 高度层叠 —— 旧版 Corner Far Lands 的 "stack"：
-    layers of terrain stack on top of another repeatedly until it reaches the height limit
-    sampledY = base + mod(y − lift − base, STACK_PERIOD)      // base=24, PERIOD=72
-    → 同一段地形（草皮/土/石/洞穴）沿高度一层层重复堆叠，层间露出横切面与空隙
+参考 [Minecraft Wiki · Far Lands (Java Edition)](https://minecraft.wiki/w/Far_Lands_(Java_Edition)) 的
+*Cause* 与 *Structure* 两节逐条实现：
 
-③ 角落（Corner Far Lands）—— 两轴同时溢出时，旧版结构只取决于两轴超出量的**比值**
-    （Wiki: consistent when the ratio ... is kept the same），因此层理是从角落放射出的
-    近完美斜线、层厚随方向变化（layers "fusing together and splitting"）：
-    ratio  = uX / (uX + uZ)，uX/uZ = 各轴超出安全区的距离
-    层相位 = CORNER_DIAGONAL·(ratio−0.5)·2      // 斜向层理
-    层厚   = STACK_PERIOD·(1 + SWING·(ratio−0.5))  // 融合/分裂
-    （取绝对值 → 四个象限天然镜像，与 Wiki 记载一致）
+### ① 高度层叠（Corner Far Lands 的 "the stack"）
 
-④ 跟随本地地形 —— 旧版的 int 饱和只发生在低频地形骨架上，本地那块地的地表材质、
-    植被、细小起伏仍是本地的（`FARLANDS_AXIS_PIN` 默认 0）：层叠与错位都作用在本地地形上，
-    所以远处仍是本地的草皮/沙地，而不是"别处一点的横切面"
+> *"layers of terrain stack on top of another repeatedly until it reaches the height limit"*
 
-⑤ 每层横向错位 —— 旧版角落的地皮是一块块"砖墙式错开"的，不是上下对齐的千层饼：
-    每层的采样 x/z 再随机平移 LAYER_OFFSET（按层号哈希）→ 层与层阶梯式错开，
-    层间露出横切面、空隙与水柱
-    （另有切片抬升 X 40@96 + Z 28@48 与混沌 20 格做细部参差）
-```
-
-- 安全区（`α = 0`）内三段全部短路，逐位等于原版；
-- 出安全区 16 格过渡带内 `α` 连续 0→1，边界处是旧版那种突然出现的层叠石壁；
-- 层叠让地形从世界底一直堆到建造上限（旧版正是"堆到高度上限"）。
-
-当前默认参数（`config/FarlandsConfig.java`）：
+竖直采样坐标被**折返**，于是同一段地形沿高度一层层重复堆叠：
 
 ```text
-正常区 10×10 chunks（160×160 格） / 过渡区 16 格
-层叠：周期 72 格、层底 y=24        → 5 层左右，层厚 = 地形剖面 + 空隙
-钉死：安全区半径 80 格外坐标冻结     → 沿轴无限隧道
-错位：切片抬升 X 40@96 + Z 28@48、混沌 20 格
+sampledY = base + mod(y − lift − base, STACK_PERIOD)      // base=24, PERIOD=72
 ```
 
-历史成因分析（12,550,824 那个数字怎么来的）与设计取舍见 [`docs/DESIGN.md`](docs/DESIGN.md)。
+每一层的顶部会重新经过地表 → 层顶自然带草皮；层与层之间是横切面与空隙。
 
-## 注入点（对原版侵入最小）
+### ② 每层横向错位
 
-不重写 `ChunkGenerator`。安装点在 `ServerChunkLoadingManager` 构造完成时（每个维度一个实例，
-因此只在 Overworld 安装），把 Overworld 噪声路由里的**噪声叶子**包装成坐标变换版本：
+> *"The number of layers ... varies between five and seven (fusing together and splitting every so often)"*
 
-| 被包装的叶子 | 覆盖范围 |
-| --- | --- |
-| `InterpolatedNoiseSampler`（`base_3d_noise`） | 地形基础 3D 噪声（经典 Far Lands 的直系噪声，171.103/格） |
-| `DensityFunctionTypes$Noise` | 含水层、洞穴、矿脉、jagged 等全部普通噪声 |
-| `DensityFunctionTypes$ShiftedNoise` | 温度/湿度/大陆性/侵蚀/深度/怪异度 → biome 与地形共享同一畸变空间 |
-| `DensityFunctionTypes$YClampedGradient` | 深度梯度 + 地表滑移项（**竖直剖面**）→ 垂直阶跃墙能真正抬起地形 |
+层不是上下对齐的千层饼，而是**一块块砖墙式错开的地皮**：每层按层号哈希把采样 x/z 再平移
+（`FARLANDS_LAYER_OFFSET`），层间露出横切面、空隙与水柱。
 
-**为什么必须连 `y_clamped_gradient` 一起包装**：地表高度是密度函数的零点。
-只搬噪声叶子时，未变换的深度梯度会把零点拽回原位（实测 36 格阶跃只抬起来约 12 格，
-而且被抹成斜坡）；把剖面函数一起搬之后，实测抬升量精确等于 `wallHeight`。
+### ③ 角落（Corner Far Lands，两轴同时溢出）
 
-同时把 `NoiseConfig` 的 `MultiNoiseSampler` 六个气候字段就地替换（不重建对象，
-以兼容 Fabric API 注入的 seed 字段），保证"查询到的 biome"与"生成出来的 biome"一致。
+> *"consistent when the ratio of how far one axis is past ... to the other is kept the same"*
+> *"near-perfect diagonal lines ... all intersect at the corner"*
 
-`Marker`（interpolated / flat_cache / cache_2d / cache_once / cache_all_in_cell）、
-Spline、rangeChoice 等原版结构**完全不动**，`ChunkNoiseSampler` 的插值/缓存路径保持原样。
+角落区结构只取决于两轴"超出量"的**比值**，因此层理是从角落放射出去的斜线、
+层厚随方向伸缩（融合/分裂）；用绝对值取距离 → 四象限天然镜像。
 
-## 代码结构
+### ④ 海平面以下灌水
 
-```text
-src/main/java/com/borderworld/
-  BorderWorld.java                Mod 入口
-  config/FarlandsConfig.java      全部可调参数（未来可整体改成配置文件）
-  core/
-    WorldgenMath.java             纯数学工具 + 经典 Far Lands 参考数学
-    NormalRegion.java             正常区/过渡区/边境之地判定（零 MC 依赖）
-    FarlandsTransform.java        坐标变换 transformX/Y/Z + getDistortionFactor（零 MC 依赖）
-    SpawnRegion.java              实际出生区块获取/缓存/锚定（core 中唯一接触 MC 的类）
-  worldgen/
-    WarpedDensityFunction.java            通用噪声叶子包装器
-    WarpedInterpolatedNoiseSampler.java   base_3d_noise 的分数坐标重算实现
-    WarpInstaller.java                    按维度安装变换
-  mixin/
-    accessor/*                            只读访问器 + 字段替换
-    ServerChunkLoadingManagerMixin.java   Overworld 安装点
-    ServerWorldMixin.java                 出生点捕获（加载 + /setworldspawn）
-    MinecraftServerMixin.java             出生点搜索期间暂停畸变
-tools/                            构建、生成、验证脚本（见下）
-```
+> *"any area beneath sea level, excluding regular caves, are flooded with water"*
+
+原版含水层在 `e = floodedness − h > 0` 时会把区域填到海平面；远区把 floodedness 抬到 1，
+于是层间空隙全部被海水淹没（旧版的 "flooded layers"）。
+
+### ⑤ 跟随本地地形
+
+旧版的整数溢出只发生在**低频地形骨架**上，本地那块地的地表材质、植被、细小起伏仍然是本地的。
+因此默认 `FARLANDS_AXIS_PIN = 0`：层叠与错位都作用在**本地地形**上，远处仍是本地的草皮/沙地，
+而不是"从别处采样的横切面"。（想要旧版那种"沿轴无限延伸的隧道"可把它调向 1。）
+
+### ⑥ 细部参差
+
+切片抬升（`FARLANDS_SLAB_STEP_X/Z`，两轴各 4 档）+ 小尺度混沌（`CHAOS_RANGE`），
+让层边界不齐、表面参差。
+
+---
+
+## 参数（`src/main/java/com/borderworld/config/FarlandsConfig.java`）
+
+| 参数 | 默认 | 作用 |
+| --- | --- | --- |
+| `NORMAL_REGION_CHUNKS` | 10 | 正常区边长（10×10 区块 = 160×160 格） |
+| `TRANSITION_WIDTH_BLOCKS` | 16 | 过渡带宽度 |
+| `FARLANDS_STACK_PERIOD` | 72 | **层叠周期**：一层多厚（越小层越多；经典 5~7 层） |
+| `FARLANDS_VERTICAL_PIVOT` | 24 | 层底高度 |
+| `FARLANDS_LAYER_OFFSET` | 72 | **每层横向错位**幅度（砖墙式错位） |
+| `FARLANDS_CORNER_DIAGONAL` | 40 | 角落斜线：层理相位随两轴溢出比值的倾斜量 |
+| `FARLANDS_CORNER_PERIOD_SWING` | 0.35 | 角落层厚摆幅（层的融合/分裂） |
+| `FARLANDS_AXIS_PIN` | 0 | 坐标钉死强度（0 = 跟随本地地形；→1 = 旧版无限隧道） |
+| `FARLANDS_SLAB_STEP_X/LATTICE_X` | 40 @ 96 | 切片抬升（X 轴） |
+| `FARLANDS_SLAB_STEP_Z/LATTICE_Z` | 28 @ 48 | 切片抬升（Z 轴） |
+| `CHAOS_RANGE` | 20 | 小尺度起伏：打散光滑面 |
+
+> 另有若干"实验用、默认关闭"的参数（竖直折回、3D 噪声位移、剪切、水平锯齿、竖直放大）留在配置里，
+> 想玩更猛的形变可以逐个打开。
+
+---
 
 ## 构建与运行
 
 ```bash
-./gradlew build          # 产出 build/libs/borderworld-<version>.jar
-./gradlew runServer      # dev 服务端（run/server）
-./gradlew runClient      # dev 客户端（可视化检查）
+# 构建（输出 jar 在 build/libs/）
+./gradlew build
+
+# 开发环境：客户端 / 服务端
+./gradlew runClient
+./gradlew runServer
+
+# 正常区逐位自检（服务端启动时运行，控制台输出 BORDERWORLD 自检结果）
+./gradlew runServer -Pbw.selftest=true
+
+# 完全关闭畸变（A/B 对照）
+./gradlew runClient -Pbw.warp=false
 ```
 
-安装到**正式 Fabric 服务端/客户端**：把 `build/libs/borderworld-<version>.jar` 与
-[Fabric API](https://modrinth.com/mod/fabric-api) 一起放进 `mods/` 即可（jar 已 remap 到
-intermediary，refmap 完整，无需开发环境）。
+依赖：Fabric Loom 1.11.8 / Fabric Loader 0.19.5 / Fabric API 0.116.17+1.21.1 / Yarn 1.21.1+build.3 / JDK 21。
 
-系统属性开关：
+## 怎么玩
 
-- `-Dborderworld.warpEnabled=false`：完全关闭畸变（A/B 对照用）
-- `-Dborderworld.selfTest=true`：服务端启动时跑一次"密度函数逐位自检"（见 `docs/VERIFICATION.md`）
-- `-Dborderworld.log=false`：关闭锚定日志
-- Gradle 运行任务可用 `-Pbw.warp=false` / `-Pbw.selftest=true` 传入上述开关
+1. 进入存档后正常游玩（默认创造模式 + 已开作弊，便于观察）。
+2. 出生点周围就是安全区；**向南/东走约 100 格**就会看到第一片层叠石壁。
+3. 建议指令：
+   - `/tp 0 80 100` —— 安全区外第一片
+   - `/tp 200 130 200` —— 角落区（两轴同时"溢出"，能看斜向层理）
+   - `/gamemode spectator` + 飞高 —— 看整片层叠地貌
 
-## 验证工具
+---
 
-```bash
-# 1. 纯数学自检（无需 Minecraft）
-javac -d /tmp/selfcheck \
-    src/main/java/com/borderworld/core/{WorldgenMath,NormalRegion,FarlandsTransform}.java \
-    src/main/java/com/borderworld/config/FarlandsConfig.java tools/SelfCheck.java
-java -cp /tmp/selfcheck SelfCheck
+## 工程结构
 
-# 2. 启动服务端 + 围绕出生点/指定区域批量生成区块（RCON 驱动）
-python3 tools/mc_harness.py --start "./gradlew runServer --console=plain" \
-    --server-dir run/server --log /tmp/bw-server.log \
-    --forceload-around-spawn 7 7 --forceload 12 12 19 19
-
-# 3. 与世界对比 / 统计
-python3 tools/world_compare.py compare   --a run/server --b run/vanilla --chunks -7 -7 7 7
-python3 tools/world_compare.py stats     --dir run/server --label modded --chunks 12 12 19 19
-python3 tools/world_compare.py seams     --dir run/server --label modded --chunks -8 -8 20 20
-python3 tools/world_compare.py heightmap --dir run/server --label modded --chunks -8 -8 20 20 --scale 4
+```text
+src/main/java/com/borderworld/
+  BorderWorld.java                Mod 入口
+  config/FarlandsConfig.java      全部可调参数
+  core/
+    WorldgenMath.java             纯数学：层叠、错位、混沌、经典 Far Lands 参考数学
+    NormalRegion.java             正常区/过渡区几何
+    FarlandsTransform.java        坐标变换：层叠折返、每层错位、角落斜理、钉死
+    SpawnRegion.java              出生区块锚定（唯一接触 MC 的 core 类）
+  worldgen/
+    WarpInstaller.java            Overworld 噪声路由安装（噪声叶子包装 + 远区灌水）
+    WarpedDensityFunction.java     噪声叶子包装
+    WarpedInterpolatedNoiseSampler.java  base_3d_noise（分数坐标版）
+    WarpedYClampedGradient.java    深度梯度/滑移项（竖直剖面）
+    FarZoneOverrideFunction.java   远区取值覆盖（灌水）
+  mixin/                          注入：噪声路由、出生点、开关
+tools/
+  SelfCheck.java                 纯数学自检（可 javac 直接跑）
+  slice_render.py                竖直剖面渲染（看层叠/镂空）
+  map_render.py                  俯视图渲染（与旧版地图对照）
+  world_compare.py               高度场比较 / 统计 / 接缝 / 渲染
+  mc_harness.py                  服务端批量生成驱动（RCON）
+docs/
+  DESIGN.md                      设计文档（含排查历程与放弃方案）
+  VERIFICATION.md                验证记录（逐条实测数据）
+  img/farlands-showcase.jpg      效果图
 ```
 
-Vanilla 基线用同一个种子与同一批区块：
+`core/` 里的数学**零 Minecraft 依赖**，迁移到新版本时只需重写 mixin 与 `SpawnRegion`。
 
-```bash
-java -Xmx2G -jar ~/.gradle/caches/fabric-loom/1.21.1/minecraft-server.jar --nogui
-```
+---
 
-（`tools/mc_harness.py` 支持 `--cwd run/vanilla`，RCON 配置见 `run/*/server.properties`。）
+## 验证
 
-## 当前状态
+- **正常区逐位自检**：`-Dborderworld.selfTest=true` → 正常区与原版逐位一致、边境区已畸变。
+- **纯数学自检**：`tools/SelfCheck.java` 独立可跑（层叠折返、每层错位、角落比值、连续性等）。
+- 详细的实测数据、剖面图与"试过但放弃的方案"见 [`docs/VERIFICATION.md`](docs/VERIFICATION.md) 与 [`docs/DESIGN.md`](docs/DESIGN.md)。
 
-**阶段 1~9 均已实测通过**（详见 [`docs/VERIFICATION.md`](docs/VERIFICATION.md)）：
+## 参考
 
-| 阶段 | 结论 |
-| --- | --- |
-| 1 工程 | `./gradlew build` 通过；发布 jar 的 mixin refmap 完整（生产环境可用） |
-| 2 出生区块 | 锚定实际出生区块 `(0,0)`；`setupSpawn` 期间暂停畸变，`/setworldspawn` 即时刷新 |
-| 3 正常区判定 | 纯数学自检 33/33 通过 |
-| 4 正常区逐位原版 | **密度函数逐位自检 6/6 通过**（正常区采样点与"强制恒等"逐位一致）；地形顶面与原版 feature 噪声同级 |
-| 5 注入点 | 噪声叶子 + NoiseConfig 路由替换；Fabric biome API 兼容（就地改字段） |
-| 6 畸变生效 | 远区 69% 列地形改变（最大 19 格，深海）；陆地/山地更明显 |
-| 7 连续过渡 | 差异比例：正常区 0.1~0.2% → 过渡区 21.5%→56.5% → 边境区 65%~81.5%（平均差 1.0→4.65 格，最大 34 格） |
-| 8 无接缝 | 跨区块边界与区块内部的高度差统计与原版同量级（比值 0.52 vs 0.70） |
-| 9 生态仍工作 | 远区 biome 正常、矿石齐全、洞穴比例 3.67%（原版 3.91%）、结构（试炼密室）生成 |
+- [Minecraft Wiki · Far Lands (Java Edition)](https://minecraft.wiki/w/Far_Lands_(Java_Edition)) —— Cause / Structure
+- [Minecraft Wiki · Java Edition Far Lands/Infdev 20100327 to Beta 1.7.3](https://minecraft.wiki/w/Java_Edition_Far_Lands/Infdev_20100327_to_Beta_1.7.3)
 
-### 已知限制（第一阶段）
+## License
 
-1. `SurfaceBuilder` 自带表面噪声（surfaceNoise / badlands / iceberg）与洞穴
-   "意面/面条"噪声（`WeirdScaledSampler`）、`Shift*` 域偏移噪声未参与坐标变换；
-   它们仍正常生成，只是不与畸变空间对齐（影响表面材质细节与洞穴形状细节）。
-2. 跨进程逐方块全等无法作为判据：实测**原版自身跑两遍**也会在矿石/树木等 feature
-   方块上有差异（Minecraft 特征生成跨进程不可复现）。因此正常区验证采用
-   "密度函数逐位自检 + 地形顶面 + biome 数组"三层判据。
-3. 出生点搜索期间畸变暂停，所以出生点选择与原版完全一致；若之后用
-   `/setworldspawn` 改出生点，已生成的区块不会重写（锚点即刻移动，新生成区块跟随）。
-
-### 调参
-
-所有参数在 `config/FarlandsConfig.java`（未来可整体搬成配置文件）：
-
-| 参数 | 默认 | 作用 |
-| --- | --- | --- |
-| `FARLANDS_STACK_PERIOD` | 72 | **层叠周期**：一层地形多厚（越小层越多；经典 5~7 层） |
-| `FARLANDS_LAYER_OFFSET` | 72 | **每层横向错位**：层与层砖墙式错开的距离（旧版角落外观关键） |
-| `FARLANDS_CORNER_DIAGONAL` | 40 | **角落斜线**：层理相位随两轴溢出比值的倾斜量 |
-| `FARLANDS_CORNER_PERIOD_SWING` | 0.35 | **角落层厚摆幅**：层的融合/分裂程度 |
-| `FARLANDS_VERTICAL_PIVOT` | 24 | 层底高度（层叠与放大的基准） |
-| `FARLANDS_SLAB_STEP_X/LATTICE_X` | 40 @ 96 | 沿 X 的台阶：层间错位 |
-| `FARLANDS_SLAB_STEP_Z/LATTICE_Z` | 28 @ 48 | 沿 Z 的台阶：层间错位 |
-| `CHAOS_RANGE` | 20 | 小尺度起伏：打散光滑面 |
-| `VERTICAL_WARP_STRENGTH/PERIOD` | 0 @ 64 | 竖直折回（层叠的补充手段，默认关） |
-| `FARLANDS_WARP3D_STRENGTH/SCALE` | 0 @ 56 | 3D 噪声位移（用于"深处也打洞"，默认关） |
-| `FARLANDS_LAYER_SHIFT_STRENGTH/PERIOD` | 64 @ 48 | **分层横向错位**：每 48 格高度一层，每层左右挪开（0~64 格）→ 错缝感 |
-| `FARLANDS_PRIMARY_STRENGTH/PERIOD` | 0.5 / 128 | 主谐波：轻度水平搬运（>1 会产生折叠/碎片） |
-| `FARLANDS_SECONDARY_STRENGTH/PERIOD` | 0 / 320 | 次谐波：默认关闭 |
-| `FARLANDS_SAWTOOTH_STRENGTH/PERIOD` | 0 / 128 | 水平锯齿断层：默认关闭 |
-| `TRANSITION_WIDTH_BLOCKS` | 16 | 过渡区宽度（1 区块） |
-| `NORMAL_REGION_CHUNKS` | 10 | 正常区边长（10×10 chunks） |
-
-`tools/tune_warp.py` 用"原版高度场 + 坐标映射"的数值代理快速比较候选参数
-（无需反复起服）：
-
-```bash
-python3 tools/tune_warp.py --dir run/vanilla --chunks -10 -10 10 10 --center-chunk 0 0
-```
-
+暂未指定（仓库默认保留所有权利）。
