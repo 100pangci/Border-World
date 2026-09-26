@@ -77,7 +77,7 @@ public final class FarlandsConfig {
      * 折回会让密度剖面在同一列出现多个零点 → 石壁被打出空洞与平台。
      * 0 = 关闭（墙面会是一块干净的整体峭壁）。
      */
-    public static final double VERTICAL_WARP_STRENGTH = 64.0;
+    public static final double VERTICAL_WARP_STRENGTH = 0.0;
     public static final double VERTICAL_WARP_PERIOD = 64.0;
 
     /**
@@ -132,13 +132,22 @@ public final class FarlandsConfig {
      * （旧版边境之地正是这样——"Swiss Cheese Wall 一直延伸到地图底部"）。
      * 0 = 关闭；建议 200~300。
      */
-    public static final double FARLANDS_WARP3D_STRENGTH = 256.0;
+    public static final double FARLANDS_WARP3D_STRENGTH = 0.0;
+
+    /**
+     * 层叠周期（格）：竖直采样坐标折返的周期，即"一层地形"的厚度。
+     *
+     * <p>这是旧版边境之地最标志性的形态（Wiki：Corner Far Lands 的 "stack"）：
+     * 同一段地形沿高度一层层重复堆叠，直到建造上限；层间露出横切面与空隙。
+     * 0 = 关闭；建议 56~96（越大层越厚）。
+     */
+    public static final double FARLANDS_STACK_PERIOD = 72.0;
 
     /** 3D 噪声位移的尺度（格）：决定孔洞的尺度。 */
     public static final double FARLANDS_WARP3D_SCALE = 56.0;
 
     /** 竖直放大的基准高度（格）：一般取海平面，地形在此高度上下被放大。 */
-    public static final double FARLANDS_VERTICAL_PIVOT = 64.0;
+    public static final double FARLANDS_VERTICAL_PIVOT = 24.0;
 
     /**
      * 随高度倾斜的剪切：不同高度把地形水平错开该幅度（格）。
@@ -225,7 +234,8 @@ public final class FarlandsConfig {
             FARLANDS_VERTICAL_AMPLIFY,
             FARLANDS_VERTICAL_PIVOT,
             FARLANDS_WARP3D_STRENGTH,
-            FARLANDS_WARP3D_SCALE
+            FARLANDS_WARP3D_SCALE,
+            FARLANDS_STACK_PERIOD
         );
     }
 

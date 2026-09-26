@@ -49,7 +49,8 @@ public final class FarlandsTransform {
         double verticalAmplify,
         double verticalPivot,
         double warp3dStrength,
-        double warp3dScale
+        double warp3dScale,
+        double stackPeriod
     ) {
         public boolean hasVerticalWarp() {
             return this.verticalStrength != 0.0 && this.verticalPeriod != 0.0;
@@ -83,7 +84,7 @@ public final class FarlandsTransform {
     }
 
     private static Params defaultParams() {
-        return new Params(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1, 0.0, 1.0, 0.0, 1.0, 1.0, 64.0, 0.0, 56.0);
+        return new Params(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1, 0.0, 1.0, 0.0, 1.0, 1.0, 64.0, 0.0, 56.0, 0.0);
     }
 
     public boolean isIdentity() {
@@ -271,6 +272,14 @@ public final class FarlandsTransform {
             // 竖直分层锯齿：产生夹层 / 镂空 / 悬空石板（老版本边境之地的外观特征）
             sampledY += WorldgenMath.layerWarp(
                 y, this.params.verticalStrength(), this.params.verticalPeriod(), WorldgenMath.layerPhase(x, z));
+        }
+        if (this.params.stackPeriod() > 0.0) {
+            // ★ 旧版边境之地的核心形态：竖直采样坐标"折返"
+            //   同一段地形沿 Y 一层层重复堆叠（Wiki：layers of terrain stack on top of
+            //   another repeatedly until it reaches the height limit）
+            double base = this.params.verticalPivot();
+            double rel = sampledY - base;
+            sampledY = base + rel - Math.floor(rel / this.params.stackPeriod()) * this.params.stackPeriod();
         }
         if (this.params.warp3dStrength() != 0.0) {
             // 3D 噪声位移：把采样高度整片搅乱 → 实心石体里从顶到底全是虚实相间的孔洞
