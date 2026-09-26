@@ -233,6 +233,11 @@ public final class WorldgenMath {
         return strength * 0.5 * hash01(band, 0, 0x846CA68B);
     }
 
+    /** 单整数哈希 → [-1,1]，用于"每层各自的横向错位量"。 */
+    public static double hashNoise(int index, int seed) {
+        return hash01(index, 0, seed);
+    }
+
     /** 墙线在 X 方向的随高度偏移（格）。 */
     public static double wallLeanX(double y) {
         return 22.0 * Math.sin(y / 41.0 + 0.6);

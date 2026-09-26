@@ -47,6 +47,11 @@ python3 tools/slice_render.py --dir run/server --world world-demo8 \
 
 ## 最终形态：坐标钉死 + 高度层叠（2026-09-26 定稿，用户确认"完美"）
 
+角落外观核对：下载并对照 Wiki 的经典角落截图 `Corner_Far_Lands.png`
+（含 `Corner_Far_Lands_terrain_loop.png`、`Corner_Farther_Lands.png`），
+确认关键特征是"每层地皮砖墙式横向错开 + 层间空隙/水柱 + 草顶"，
+因此新增 `FARLANDS_LAYER_OFFSET`（每层按层号哈希横向平移）。
+
 角落（Corner Far Lands）处理：两轴同时溢出时，层理相位随 `uX/(uX+uZ)` 倾斜、
 层厚随比值伸缩 → 层理呈斜向并会出现融合/分裂（Wiki 的 "near-perfect diagonal
 lines ... all intersect at the corner" 与 "fusing together and splitting"）。

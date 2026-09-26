@@ -52,7 +52,8 @@ public final class FarlandsTransform {
         double warp3dScale,
         double stackPeriod,
         double cornerDiagonal,
-        double cornerPeriodSwing
+        double cornerPeriodSwing,
+        double layerOffset
     ) {
         public boolean hasVerticalWarp() {
             return this.verticalStrength != 0.0 && this.verticalPeriod != 0.0;
@@ -86,7 +87,7 @@ public final class FarlandsTransform {
     }
 
     private static Params defaultParams() {
-        return new Params(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1, 0.0, 1.0, 0.0, 1.0, 1.0, 64.0, 0.0, 56.0, 0.0, 0.0, 0.0);
+        return new Params(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1, 0.0, 1.0, 0.0, 1.0, 1.0, 64.0, 0.0, 56.0, 0.0, 0.0, 0.0, 0.0);
     }
 
     public boolean isIdentity() {
@@ -234,6 +235,9 @@ public final class FarlandsTransform {
         // ① 整数饱和：超出安全区的坐标被钉死在边界 → 该轴上的噪声不再变化
         //    （旧版"沿轴无限延伸的隧道"就是这个来的）
         x = pin(x, this.centerX, this.region.innerRadius());
+        // ★ 每层各自横向错位：旧版 Corner Far Lands 的层是一块块"错开的地皮"（砖墙式错位），
+        //   不是上下对齐的千层饼
+        x += layerOffsetX(x, y, z);
         double u = x - this.centerX;
         double warped = this.centerX + farAxis(u, this.params.primaryPhaseX(), this.params.secondaryPhaseX());
         double layerShift = WorldgenMath.layerShiftX(
@@ -308,6 +312,7 @@ public final class FarlandsTransform {
         }
         // ① 整数饱和（Z 轴同理）
         z = pin(z, this.centerZ, this.region.innerRadius());
+        z += layerOffsetZ(x, y, z);
         double u = z - this.centerZ;
         double warped = this.centerZ + farAxis(u, this.params.primaryPhaseZ(), this.params.secondaryPhaseZ());
         double layerShift = WorldgenMath.layerShiftZ(
@@ -337,6 +342,32 @@ public final class FarlandsTransform {
         }
         double sum = ux + uz;
         return sum <= 1e-9 ? 0.5 : ux / sum;
+    }
+
+    /** 该世界高度所在"层"的编号（与世界里的层一一对应）。 */
+    private int layerIndex(double x, double y, double z) {
+        double period = this.params.stackPeriod();
+        if (period <= 0.0) {
+            return 0;
+        }
+        double lift = wallShiftAt(x, y, z);
+        return (int) Math.floor((y - lift - this.params.verticalPivot()) / period);
+    }
+
+    /** 每层各自的横向错位（X），旧版角落"错开的地皮"的来源。 */
+    private double layerOffsetX(double x, double y, double z) {
+        if (this.params.layerOffset() == 0.0 || this.params.stackPeriod() <= 0.0) {
+            return 0.0;
+        }
+        return this.params.layerOffset() * 0.5 * WorldgenMath.hashNoise(layerIndex(x, y, z), 0x27D4EB2F);
+    }
+
+    /** 每层各自的横向错位（Z）。 */
+    private double layerOffsetZ(double x, double y, double z) {
+        if (this.params.layerOffset() == 0.0 || this.params.stackPeriod() <= 0.0) {
+            return 0.0;
+        }
+        return this.params.layerOffset() * 0.5 * WorldgenMath.hashNoise(layerIndex(x, y, z), 0x165667B1);
     }
 
     /** 把坐标钉死在中心 ±limit 以内（对应旧版噪声坐标的 int 饱和）。 */

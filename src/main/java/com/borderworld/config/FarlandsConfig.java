@@ -161,6 +161,15 @@ public final class FarlandsConfig {
      */
     public static final double FARLANDS_CORNER_PERIOD_SWING = 0.35;
 
+    /**
+     * 每层横向错位幅度（格）：层与层之间整体错开的距离（随机，0~幅度）。
+     *
+     * <p>这是旧版 Corner Far Lands 外观的关键：层不是上下对齐的千层饼，
+     * 而是一块块<b>错开的地皮</b>（砖墙式/阶梯式错位），层间露出横切面与空隙。
+     * 0 = 关闭；建议 48~96。
+     */
+    public static final double FARLANDS_LAYER_OFFSET = 72.0;
+
     /** 3D 噪声位移的尺度（格）：决定孔洞的尺度。 */
     public static final double FARLANDS_WARP3D_SCALE = 56.0;
 
@@ -255,7 +264,8 @@ public final class FarlandsConfig {
             FARLANDS_WARP3D_SCALE,
             FARLANDS_STACK_PERIOD,
             FARLANDS_CORNER_DIAGONAL,
-            FARLANDS_CORNER_PERIOD_SWING
+            FARLANDS_CORNER_PERIOD_SWING,
+            FARLANDS_LAYER_OFFSET
         );
     }
 
