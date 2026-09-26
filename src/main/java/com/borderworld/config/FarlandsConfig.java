@@ -44,7 +44,7 @@ public final class FarlandsConfig {
      *   <li>A &gt; 1：局部折叠（出现镜像重复地形，更接近经典"重复结构"）</li>
      * </ul>
      */
-    public static final double FARLANDS_PRIMARY_STRENGTH = 0.5;
+    public static final double FARLANDS_PRIMARY_STRENGTH = 0.0;
 
     /** 主谐波周期（方块）。决定墙/平台的间距尺度。 */
     public static final double FARLANDS_PRIMARY_PERIOD = 128.0;
@@ -77,7 +77,7 @@ public final class FarlandsConfig {
      * 折回会让密度剖面在同一列出现多个零点 → 石壁被打出空洞与平台。
      * 0 = 关闭（墙面会是一块干净的整体峭壁）。
      */
-    public static final double VERTICAL_WARP_STRENGTH = 0.0;
+    public static final double VERTICAL_WARP_STRENGTH = 64.0;
     public static final double VERTICAL_WARP_PERIOD = 64.0;
 
     /**
@@ -88,7 +88,7 @@ public final class FarlandsConfig {
      * "突然抬上去"改由切片抬升（见 {@link #FARLANDS_SLAB_STEP_X}）负责，
      * 高度恒定、与当地起伏无关。
      */
-    public static final double FARLANDS_SAWTOOTH_STRENGTH = 48.0;
+    public static final double FARLANDS_SAWTOOTH_STRENGTH = 0.0;
     public static final double FARLANDS_SAWTOOTH_PERIOD = 96.0;
 
     // ------------------------------------------------------------------
@@ -102,11 +102,11 @@ public final class FarlandsConfig {
      * <p>两级叠加（X 粗 + Z 细）复现老版本边境之地的层层石壁：
      * 原地形被切片整体错开，片内材质不变，片间是竖直断面。
      */
-    public static final double FARLANDS_SLAB_STEP_X = 32.0;
+    public static final double FARLANDS_SLAB_STEP_X = 40.0;
     public static final double FARLANDS_SLAB_LATTICE_X = 96.0;
 
     /** 沿 Z 的细切片：更密的竖壁（老版本那种一眼看不到头的密集石壁）。 */
-    public static final double FARLANDS_SLAB_STEP_Z = 24.0;
+    public static final double FARLANDS_SLAB_STEP_Z = 28.0;
     public static final double FARLANDS_SLAB_LATTICE_Z = 48.0;
 
     /** 每轴切片档数：抬升量 = 档位(0..n-1) × STEP。4 档 ⇒ 最高约 3×56+3×40 = 288 格（地表正好顶到建造上限）。 */
@@ -122,7 +122,7 @@ public final class FarlandsConfig {
      * 放大之后平地变丘陵、小坡变巨崖，再叠加切片/错位/折回才是老版本那种形态。
      * 1 = 关闭；建议 6~10。
      */
-    public static final double FARLANDS_VERTICAL_AMPLIFY = 4.0;
+    public static final double FARLANDS_VERTICAL_AMPLIFY = 1.0;
 
     /** 竖直放大的基准高度（格）：一般取海平面，地形在此高度上下被放大。 */
     public static final double FARLANDS_VERTICAL_PIVOT = 64.0;
@@ -131,7 +131,7 @@ public final class FarlandsConfig {
      * 随高度倾斜的剪切：不同高度把地形水平错开该幅度（格）。
      * 让石壁出现悬挑、空隙、倾斜的层理（老版本那种"整块地皮被推歪"的观感）。0 = 关闭。
      */
-    public static final double FARLANDS_SHEAR_STRENGTH = 48.0;
+    public static final double FARLANDS_SHEAR_STRENGTH = 0.0;
     public static final double FARLANDS_SHEAR_PERIOD = 96.0;
 
     /**

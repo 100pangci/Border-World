@@ -48,9 +48,15 @@ public final class WarpInstaller {
             }
         }
 
+        // 捕获未被包装的原版 base_3d_noise（溢出机制要用它在"钉死坐标"处取符号）
+        final DensityFunction[] baseHolder = new DensityFunction[1];
+
         DensityFunction.DensityFunctionVisitor visitor = new DensityFunction.DensityFunctionVisitor() {
             @Override
             public DensityFunction apply(DensityFunction function) {
+                if (baseHolder[0] == null && function instanceof InterpolatedNoiseSampler) {
+                    baseHolder[0] = function;
+                }
                 return wrapLeaf(function);
             }
 

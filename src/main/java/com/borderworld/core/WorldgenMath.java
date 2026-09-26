@@ -168,6 +168,40 @@ public final class WorldgenMath {
     }
 
     /**
+     * 廉价 3D 值噪声（三线性插值），返回 [-1, 1]。
+     *
+     * <p>用于复现旧版溢出后的"只保留一个噪声的符号"：这个噪声的符号直接决定
+     * 实心 / 空气，于是地形变成海绵状石壁 + 沿轴不变的隧道。
+     * 用值噪声（旧版用的就是值噪声）而不是完整八度噪声，逐方块求值也不慢。
+     */
+    public static double spongeNoise(double x, double y, double z, double scale, int seed) {
+        double fx = x / scale;
+        double fy = y / scale;
+        double fz = z / scale;
+        int x0 = (int) Math.floor(fx);
+        int y0 = (int) Math.floor(fy);
+        int z0 = (int) Math.floor(fz);
+        double tx = smoothstep(fx - x0);
+        double ty = smoothstep(fy - y0);
+        double tz = smoothstep(fz - z0);
+
+        double c000 = hash01(x0, y0 * 31 + z0, seed);
+        double c100 = hash01(x0 + 1, y0 * 31 + z0, seed);
+        double c010 = hash01(x0, (y0 + 1) * 31 + z0, seed);
+        double c110 = hash01(x0 + 1, (y0 + 1) * 31 + z0, seed);
+        double c001 = hash01(x0, y0 * 31 + z0 + 1, seed);
+        double c101 = hash01(x0 + 1, y0 * 31 + z0 + 1, seed);
+        double c011 = hash01(x0, (y0 + 1) * 31 + z0 + 1, seed);
+        double c111 = hash01(x0 + 1, (y0 + 1) * 31 + z0 + 1, seed);
+
+        double x00 = lerp(tx, c000, c100);
+        double x10 = lerp(tx, c010, c110);
+        double x01 = lerp(tx, c001, c101);
+        double x11 = lerp(tx, c011, c111);
+        return lerp(tz, lerp(ty, x00, x10), lerp(ty, x01, x11));
+    }
+
+    /**
      * 远区小尺度起伏：让墙面/台面不再是一张光滑平板。
      * 两个八度叠加（26 格 + 72 格），幅度 30 + 16 格。
      */

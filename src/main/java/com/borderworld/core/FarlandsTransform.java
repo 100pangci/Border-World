@@ -160,14 +160,43 @@ public final class FarlandsTransform {
             x + WorldgenMath.wallLeanX(y), this.params.slabLatticeX(), 0x2545F491, levels);
         double levelZ = WorldgenMath.slabLevel(
             z + WorldgenMath.wallLeanZ(y), this.params.slabLatticeZ(), 0x51ED270B, levels);
-        // 小尺度起伏：墙面/台面被揉碎成参差的石堆，而不是光滑平面
-        double chaos = WorldgenMath.chaosLift(x, z);
+        // 小尺度起伏：墙面/台面被揉碎成参差的石堆，而不是光滑平面（CHAOS_RANGE = 0 时关闭）
+        double chaos = com.borderworld.config.FarlandsConfig.CHAOS_RANGE <= 0.0
+            ? 0.0
+            : WorldgenMath.chaosLift(x, z) * (com.borderworld.config.FarlandsConfig.CHAOS_RANGE / 20.0);
         return levelX * this.params.slabStepX() + levelZ * this.params.slabStepZ() + chaos;
     }
 
     // ------------------------------------------------------------------
     // 坐标变换（用户要求的对外 API）
     // ------------------------------------------------------------------
+
+    /**
+     * 溢出坐标（X）：超出安全区的坐标被"钉死"在安全区边界，
+     * 对应旧版噪声坐标转 int 时的饱和（该轴上噪声不再变化 → 沿轴无限的隧道）。
+     */
+    public int overflowX(double x) {
+        double limit = this.region.innerRadius();
+        double u = x - this.centerX;
+        if (u > limit) {
+            u = limit;
+        } else if (u < -limit) {
+            u = -limit;
+        }
+        return (int) Math.round(this.centerX + u);
+    }
+
+    /** 溢出坐标（Z），与 {@link #overflowX} 同理。 */
+    public int overflowZ(double z) {
+        double limit = this.region.innerRadius();
+        double u = z - this.centerZ;
+        if (u > limit) {
+            u = limit;
+        } else if (u < -limit) {
+            u = -limit;
+        }
+        return (int) Math.round(this.centerZ + u);
+    }
 
     /** 变换 X 轴坐标（内部自行计算畸变系数）。 */
     public double transformX(double x, double y, double z) {
@@ -197,6 +226,9 @@ public final class FarlandsTransform {
         if (this.identity || alpha == 0.0) {
             return x;
         }
+        // ① 整数饱和：超出安全区的坐标被钉死在边界 → 该轴上的噪声不再变化
+        //    （旧版"沿轴无限延伸的隧道"就是这个来的）
+        x = pin(x, this.centerX, this.region.innerRadius());
         double u = x - this.centerX;
         double warped = this.centerX + farAxis(u, this.params.primaryPhaseX(), this.params.secondaryPhaseX());
         double layerShift = WorldgenMath.layerShiftX(
@@ -245,6 +277,8 @@ public final class FarlandsTransform {
         if (this.identity || alpha == 0.0) {
             return z;
         }
+        // ① 整数饱和（Z 轴同理）
+        z = pin(z, this.centerZ, this.region.innerRadius());
         double u = z - this.centerZ;
         double warped = this.centerZ + farAxis(u, this.params.primaryPhaseZ(), this.params.secondaryPhaseZ());
         double layerShift = WorldgenMath.layerShiftZ(
@@ -255,6 +289,18 @@ public final class FarlandsTransform {
     // ------------------------------------------------------------------
     // 内部
     // ------------------------------------------------------------------
+
+    /** 把坐标钉死在中心 ±limit 以内（对应旧版噪声坐标的 int 饱和）。 */
+    private static double pin(double value, double center, double limit) {
+        double u = value - center;
+        if (u > limit) {
+            return center + limit;
+        }
+        if (u < -limit) {
+            return center - limit;
+        }
+        return value;
+    }
 
     /** 单轴 Far Lands 映射：u → v(u)。 */
     private double farAxis(double u, double primaryPhase, double secondaryPhase) {

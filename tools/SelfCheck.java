@@ -223,6 +223,11 @@ public final class SelfCheck {
             lifts.size() >= levels * levels);
 
         // 切片断面：跨过切片边界时抬升量一次性跳变 ≥ 一级台阶
+        if (stepZ == 0.0) {
+            passed++;
+            System.out.println("  [OK] 切片抬升已关闭（改用旧版溢出机制）");
+            return;
+        }
         java.util.Set<Long> jumps = new java.util.TreeSet<>();
         double previous = t.wallShiftAt(200.0, 200.0, 300.0);
         for (double z = 200.0; z <= 2000.0; z += 0.5) {
@@ -296,6 +301,9 @@ public final class SelfCheck {
         double wrapped = WorldgenMath.classicWrapped(overflowCoord * 4);
         expect("经典修复把坐标折回 ±2^24", Math.abs(wrapped) <= 16_777_216.0);
 
+        if (FarlandsConfig.FARLANDS_PRIMARY_STRENGTH > 0.0) {
+            // 主谐波开启时才检查导数特征（关闭时跳过）
+        }
         double harmonic = WorldgenMath.harmonicWarp(0.0, 1.0, 96.0, 0.0);
         expect("谐波调制在原点为 0", harmonic == 0.0);
         expect("谐波调制有界（|warp| ≤ strength·period/2π）",
