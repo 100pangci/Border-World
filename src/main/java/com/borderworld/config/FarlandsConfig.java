@@ -77,8 +77,8 @@ public final class FarlandsConfig {
      * 折回会让密度剖面在同一列出现多个零点 → 石壁被打出空洞与平台。
      * 0 = 关闭（墙面会是一块干净的整体峭壁）。
      */
-    public static final double VERTICAL_WARP_STRENGTH = 112.0;
-    public static final double VERTICAL_WARP_PERIOD = 64.0;
+    public static final double VERTICAL_WARP_STRENGTH = 128.0;
+    public static final double VERTICAL_WARP_PERIOD = 48.0;
 
     /**
      * 锯齿断层：每 {@code period} 格产生一次幅度 {@code strength} 的<b>水平</b>坐标跳变。
@@ -103,14 +103,17 @@ public final class FarlandsConfig {
      * 原地形被切片整体错开，片内材质不变，片间是竖直断面。
      */
     public static final double FARLANDS_SLAB_STEP_X = 56.0;
-    public static final double FARLANDS_SLAB_LATTICE_X = 160.0;
+    public static final double FARLANDS_SLAB_LATTICE_X = 96.0;
 
     /** 沿 Z 的细切片：更密的竖壁（老版本那种一眼看不到头的密集石壁）。 */
     public static final double FARLANDS_SLAB_STEP_Z = 40.0;
-    public static final double FARLANDS_SLAB_LATTICE_Z = 56.0;
+    public static final double FARLANDS_SLAB_LATTICE_Z = 32.0;
 
     /** 每轴切片档数：抬升量 = 档位(0..n-1) × STEP。4 档 ⇒ 最高约 3×56+3×40 = 288 格（地表正好顶到建造上限）。 */
     public static final int FARLANDS_SLAB_LEVELS = 4;
+
+    /** 小尺度起伏的幅度上限（格）：墙面/台面被揉碎的程度（见 WorldgenMath#chaosLift）。 */
+    public static final double CHAOS_RANGE = 46.0;
 
     /**
      * 随高度倾斜的剪切：不同高度把地形水平错开该幅度（格）。
@@ -126,8 +129,8 @@ public final class FarlandsConfig {
      * <p>这是"边境之地错位感"的来源：地形被切成水平层，每层整体左右挪开，
      * 层间出现悬挑、错缝、错开露出的层理。0 = 关闭。
      */
-    public static final double FARLANDS_LAYER_SHIFT_STRENGTH = 64.0;
-    public static final double FARLANDS_LAYER_SHIFT_PERIOD = 48.0;
+    public static final double FARLANDS_LAYER_SHIFT_STRENGTH = 96.0;
+    public static final double FARLANDS_LAYER_SHIFT_PERIOD = 32.0;
 
     // ------------------------------------------------------------------
     // 运行开关

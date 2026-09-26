@@ -158,7 +158,9 @@ public final class FarlandsTransform {
             x + WorldgenMath.wallLeanX(y), this.params.slabLatticeX(), 0x2545F491, levels);
         double levelZ = WorldgenMath.slabLevel(
             z + WorldgenMath.wallLeanZ(y), this.params.slabLatticeZ(), 0x51ED270B, levels);
-        return levelX * this.params.slabStepX() + levelZ * this.params.slabStepZ();
+        // 小尺度起伏：墙面/台面被揉碎成参差的石堆，而不是光滑平面
+        double chaos = WorldgenMath.chaosLift(x, z);
+        return levelX * this.params.slabStepX() + levelZ * this.params.slabStepZ() + chaos;
     }
 
     // ------------------------------------------------------------------

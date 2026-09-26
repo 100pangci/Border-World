@@ -168,6 +168,15 @@ public final class WorldgenMath {
     }
 
     /**
+     * 远区小尺度起伏：让墙面/台面不再是一张光滑平板。
+     * 两个八度叠加（26 格 + 72 格），幅度 30 + 16 格。
+     */
+    public static double chaosLift(double x, double z) {
+        return 30.0 * valueNoise(x, z, 26.0, 0x3C6EF372)
+            + 16.0 * valueNoise(x, z, 72.0, 0xA54FF53A);
+    }
+
+    /**
      * 分层横向错位：每 {@code period} 格高度，水平采样位置跳变一次（幅度由哈希决定）。
      *
      * <p>这是"边框之地错位感"的核心：地形被切成水平层，每层整体左右挪开一段距离，

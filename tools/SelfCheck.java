@@ -205,21 +205,21 @@ public final class SelfCheck {
             for (double z = 200.0; z <= 900.0; z += 2.3) {
                 double lift = t.wallShiftAt(x, 200.0, z);
                 lifts.add(Math.round(lift));
-                if (lift < -1e-9 || lift > maxLift + 1e-9) {
+                if (lift < -(FarlandsConfig.CHAOS_RANGE + 1e-9) || lift > maxLift + FarlandsConfig.CHAOS_RANGE + 1e-9) {
                     bounded = false;
                 }
                 for (double y : new double[] {-60.0, 0.0, 64.0, 200.0, 319.0}) {
                     double sampled = t.transformY(x, y, z);
-                    if (Math.abs(sampled - y) > maxLift + layer + 1e-9) {
+                    if (Math.abs(sampled - y) > maxLift + FarlandsConfig.CHAOS_RANGE + layer + 1e-9) {
                         bounded = false;
                     }
                 }
             }
         }
-        expect("远区抬升量有界（0.." + (int) maxLift + " 格，实测档位 " + lifts.size() + " 种）",
+        expect("远区抬升量有界（±混沌 " + (int) FarlandsConfig.CHAOS_RANGE + " 内，实测档位 " + lifts.size() + " 种）",
             bounded && lifts.size() >= 8);
-        expect("抬升量恰为两级切片之和（档位数为 " + levels + "×" + levels + " 种）",
-            lifts.size() <= levels * levels);
+        expect("切片档位数与混沌叠加（实测 " + lifts.size() + " 种 ≥ " + (levels * levels) + "）",
+            lifts.size() >= levels * levels);
 
         // 切片断面：跨过切片边界时抬升量一次性跳变 ≥ 一级台阶
         java.util.Set<Long> jumps = new java.util.TreeSet<>();
@@ -227,7 +227,7 @@ public final class SelfCheck {
         for (double z = 200.0; z <= 2000.0; z += 0.5) {
             double current = t.wallShiftAt(200.0, 200.0, z);
             double delta = Math.abs(current - previous);
-            if (delta > 1e-9) {
+            if (delta >= 20.0) {   // 只统计"切片断面"级跳变（小尺度混沌是连续变化，不算）
                 jumps.add(Math.round(delta));
             }
             previous = current;
