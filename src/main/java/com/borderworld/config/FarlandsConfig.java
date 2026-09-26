@@ -162,6 +162,16 @@ public final class FarlandsConfig {
     public static final double FARLANDS_CORNER_PERIOD_SWING = 0.35;
 
     /**
+     * 坐标钉死强度（0~1）：超出安全区的采样坐标被"夹回边界"的程度。
+     *
+     * <p>旧版的 int 饱和只发生在<b>低频地形骨架</b>上，而本地那块地的地表材质、
+     * 植被、细小起伏仍然是本地的——所以默认 <b>0</b>：<b>跟随本地的地形</b>，
+     * 只把"层叠 + 每层错位"叠加上去（这才是旧版截图里"一块块本地地皮被切开错位"的样子）。
+     * 调到 1 会得到旧版那种沿轴无限的隧道，但地表会变成远处横切面。
+     */
+    public static final double FARLANDS_AXIS_PIN = 0.0;
+
+    /**
      * 每层横向错位幅度（格）：层与层之间整体错开的距离（随机，0~幅度）。
      *
      * <p>这是旧版 Corner Far Lands 外观的关键：层不是上下对齐的千层饼，
@@ -265,7 +275,8 @@ public final class FarlandsConfig {
             FARLANDS_STACK_PERIOD,
             FARLANDS_CORNER_DIAGONAL,
             FARLANDS_CORNER_PERIOD_SWING,
-            FARLANDS_LAYER_OFFSET
+            FARLANDS_LAYER_OFFSET,
+            FARLANDS_AXIS_PIN
         );
     }
 

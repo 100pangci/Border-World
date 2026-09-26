@@ -108,7 +108,7 @@ public final class SelfCheck {
             base.layerShiftStrength(), base.layerShiftPeriod(),
             base.verticalAmplify(), base.verticalPivot(),
             base.warp3dStrength(), base.warp3dScale(), base.stackPeriod(),
-            base.cornerDiagonal(), base.cornerPeriodSwing(), base.layerOffset());
+            base.cornerDiagonal(), base.cornerPeriodSwing(), base.layerOffset(), base.axisPin());
         FarlandsTransform t = new FarlandsTransform(0.0, 0.0, FarlandsConfig.normalRegion(0.0, 0.0), noSaw);
         // 连续性用二阶差分判定：一阶差分在过渡带会被 alpha 斜坡抬高（那是设计内的渐变，不是跳变）
         double step = 0.25;

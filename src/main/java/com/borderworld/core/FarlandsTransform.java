@@ -53,7 +53,8 @@ public final class FarlandsTransform {
         double stackPeriod,
         double cornerDiagonal,
         double cornerPeriodSwing,
-        double layerOffset
+        double layerOffset,
+        double axisPin
     ) {
         public boolean hasVerticalWarp() {
             return this.verticalStrength != 0.0 && this.verticalPeriod != 0.0;
@@ -87,7 +88,7 @@ public final class FarlandsTransform {
     }
 
     private static Params defaultParams() {
-        return new Params(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1, 0.0, 1.0, 0.0, 1.0, 1.0, 64.0, 0.0, 56.0, 0.0, 0.0, 0.0, 0.0);
+        return new Params(0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1, 0.0, 1.0, 0.0, 1.0, 1.0, 64.0, 0.0, 56.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     }
 
     public boolean isIdentity() {
@@ -232,9 +233,13 @@ public final class FarlandsTransform {
         if (this.identity || alpha == 0.0) {
             return x;
         }
-        // ① 整数饱和：超出安全区的坐标被钉死在边界 → 该轴上的噪声不再变化
-        //    （旧版"沿轴无限延伸的隧道"就是这个来的）
-        x = pin(x, this.centerX, this.region.innerRadius());
+        // ① 整数饱和（可调）：旧版"索引钉死"只发生在低频地形骨架上，
+        //    本地那块地的地表材质/起伏仍是本地的 → 因此默认 axisPin=0（完全跟随本地地形），
+        //    需要旧版那种"沿轴无限隧道"时把 FARLANDS_AXIS_PIN 调向 1。
+        if (this.params.axisPin() > 0.0) {
+            double pinned = pin(x, this.centerX, this.region.innerRadius());
+            x = x + this.params.axisPin() * (pinned - x);
+        }
         // ★ 每层各自横向错位：旧版 Corner Far Lands 的层是一块块"错开的地皮"（砖墙式错位），
         //   不是上下对齐的千层饼
         x += layerOffsetX(x, y, z);
@@ -310,8 +315,11 @@ public final class FarlandsTransform {
         if (this.identity || alpha == 0.0) {
             return z;
         }
-        // ① 整数饱和（Z 轴同理）
-        z = pin(z, this.centerZ, this.region.innerRadius());
+        // ① 整数饱和（Z 轴同理，默认关闭）
+        if (this.params.axisPin() > 0.0) {
+            double pinned = pin(z, this.centerZ, this.region.innerRadius());
+            z = z + this.params.axisPin() * (pinned - z);
+        }
         z += layerOffsetZ(x, y, z);
         double u = z - this.centerZ;
         double warped = this.centerZ + farAxis(u, this.params.primaryPhaseZ(), this.params.secondaryPhaseZ());
